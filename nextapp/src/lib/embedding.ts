@@ -1,6 +1,5 @@
 // lib/embedding.ts
 // Uses Gemini via REST API for tone analysis + mock 8-dim embedding for MVP
-
 interface QuickFeatures {
   avgWordLen: number;
   sentCount: number;
@@ -52,8 +51,6 @@ function extractQuickFeatures(text: string): QuickFeatures {
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  // Production: call OpenAI text-embedding-3-small for 1536-dim vectors
-  // MVP: derive pseudo-embedding from stylometric features
 
   const features = extractQuickFeatures(text);
   // Normalize to [0,1] range — 8 dimensions

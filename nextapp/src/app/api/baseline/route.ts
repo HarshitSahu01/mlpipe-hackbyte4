@@ -3,7 +3,6 @@ import { withArmorIQ } from '@/lib/armoriq';
 import { db } from '@/lib/mongodb';
 import { generateEmbedding } from '@/lib/embedding';
 
-// ---- Types ----
 type BaselineRequest = {
   userId: string;
   handle: string;
@@ -96,6 +95,74 @@ async function analyzeTexts(texts: string[]): Promise<Metrics> {
 
 
 // ---- Handler ----
+/**
+ * @swagger
+ * /api/baseline:
+ *   post:
+ *     summary: Create a new DNA profile baseline
+ *     description: Analyzes text samples to create a stylometric and embedding baseline profile.
+ *     tags: [Baseline]
+ *     security:
+ *       - userIdHeader: []
+ *         userRoleHeader: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - texts
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: Unique identifier for the user.
+ *               handle:
+ *                 type: string
+ *                 description: User's handle or username.
+ *               platform:
+ *                 type: string
+ *                 description: Platform the texts are from.
+ *               texts:
+ *                 type: array
+ *                 description: Array of text samples for analysis.
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Successfully created baseline profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 metrics:
+ *                   type: object
+ *                   properties:
+ *                     avgSentenceLength:
+ *                       type: number
+ *                     punctuationStyle:
+ *                       type: number
+ *                     emojiFrequency:
+ *                       type: number
+ *                     vocabUniqueness:
+ *                       type: number
+ *                     formalityScore:
+ *                       type: number
+ *                     humanVariance:
+ *                       type: number
+ *                     contractionRate:
+ *                       type: number
+ *                     typoRate:
+ *                       type: number
+ *       400:
+ *         description: Invalid input, missing userId or texts
+ *       500:
+ *         description: Internal Server Error
+ */
 export const POST = withArmorIQ(
   async (req: NextRequest): Promise<NextResponse> => {
     try {

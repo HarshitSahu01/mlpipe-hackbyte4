@@ -1,6 +1,5 @@
 // lib/embedding.ts
 // Uses Gemini via REST API for tone analysis + mock 8-dim embedding for MVP
-
 interface QuickFeatures {
   avgWordLen: number;
   sentCount: number;

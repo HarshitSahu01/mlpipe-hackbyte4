@@ -1,52 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ObjectId } from 'mongodb';
 import { withArmorIQ } from '@/lib/armoriq';
 import { db } from '@/lib/mongodb';
 
-// ---- Types ----
+// ---- Types (MATCH PYTHON EXACTLY) ----
+type Metrics = {
+  avgSentenceLength: number;
+  punctuationStyle: number;
+  emojiFrequency: number;
+  vocabUniqueness: number;
+  formalityScore: number;
+  humanVariance: number;
+  contractionRate: number;
+  typoRate: number;
+};
+
 type CompareRequest = {
   baselineId: string;
   suspectId: string;
 };
 
-type Metrics = {
-  avgSentenceLength: number;
-  emojiFrequency: number;
-  punctuationDensity: number;
-  vocabularyRichness: number;
-  toneScore: number;
-};
-
 type DNAProfile = {
-  _id: string;
+  _id: ObjectId;
   embedding: number[];
   metrics: Metrics;
 };
 
 type Suspect = {
-  _id: string;
+  _id: ObjectId;
   embedding: number[];
   metrics: Metrics;
 };
 
-type RiskResult = {
-  riskScore: number;
-  status: 'VERIFIED' | 'SUSPICIOUS' | 'IMPOSTER';
-};
+// ---- Cosine Similarity (from Python) ----
+function computeCosine(a: number[], b: number[]): number {
+  const dot = a.reduce((sum, val, i) => sum + val * (b[i] || 0), 0);
 
-// ---- External Functions ----
-declare function computeCosine(a: number[], b: number[]): number;
+  const magA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+  const magB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
 
-declare function computeRiskScore(
+  return dot / Math.max(magA * magB, 1e-10);
+}
+
+// ---- Risk Score (ported from Python) ----
+function computeRiskScore(
   baseline: Metrics,
   suspect: Metrics,
-  similarity: number
-): RiskResult;
+  cosineSim: number
+) {
+  const embeddingRisk = cosineSim * 50;
 
-declare function detectAnomalies(
+  const deltas: number[] = [];
+
+  for (const key in baseline) {
+    const b = baseline[key as keyof Metrics];
+    const s = suspect[key as keyof Metrics];
+
+    if (typeof b === 'number' && typeof s === 'number') {
+      const maxVal = Math.max(Math.abs(b), Math.abs(s), 0.001);
+      deltas.push(Math.abs(b - s) / maxVal);
+    }
+  }
+
+  const avgDelta =
+    deltas.reduce((sum, d) => sum + d, 0) / Math.max(deltas.length, 1);
+
+  const styleRisk = (1 - avgDelta) * 30;
+
+  // AI signals
+  let aiSignals = 0;
+  if (suspect.humanVariance < 0.3) aiSignals++;
+  if (suspect.formalityScore > 0.75) aiSignals++;
+  if (suspect.contractionRate < 0.1) aiSignals++;
+  if (suspect.typoRate < 0.005) aiSignals++;
+
+  const aiRisk = (aiSignals / 4) * 20;
+
+  const total = embeddingRisk + styleRisk + aiRisk;
+
+  let status: 'VERIFIED' | 'SUSPICIOUS' | 'IMPOSTER';
+
+  if (total >= 75) status = 'IMPOSTER';
+  else if (total >= 45) status = 'SUSPICIOUS';
+  else status = 'VERIFIED';
+
+  return {
+    riskScore: Math.round(Math.min(total, 100)),
+    status,
+    breakdown: {
+      embeddingRisk: Math.round(embeddingRisk * 10) / 10,
+      stylometricRisk: Math.round(styleRisk * 10) / 10,
+      aiPatternRisk: Math.round(aiRisk * 10) / 10,
+    },
+    cosineSimilarity: Number(cosineSim.toFixed(4)),
+    confidence: Math.round(Math.min(total * 1.1, 99)),
+  };
+}
+
+// ---- Simple anomaly detector ----
+function detectAnomalies(
   baseline: Metrics,
   suspect: Metrics,
-  similarity: number
-): string[];
+  cosineSim: number
+): string[] {
+  const anomalies: string[] = [];
+
+  if (cosineSim > 0.9) anomalies.push('High embedding similarity');
+
+  if (suspect.formalityScore > 0.8 && baseline.formalityScore < 0.5) {
+    anomalies.push('Sudden increase in formality');
+  }
+
+  if (suspect.humanVariance < 0.2) {
+    anomalies.push('Low variance (AI-like consistency)');
+  }
+
+  if (suspect.contractionRate < 0.05) {
+    anomalies.push('No contractions (AI signal)');
+  }
+
+  return anomalies;
+}
 
 // ---- Handler ----
 export const POST = withArmorIQ(
@@ -57,11 +131,11 @@ export const POST = withArmorIQ(
 
       const baseline = await db
         .collection<DNAProfile>('dna_profiles')
-        .findOne({ _id: baselineId });
+        .findOne({ _id: new ObjectId(baselineId) });
 
       const suspect = await db
         .collection<Suspect>('suspects')
-        .findOne({ _id: suspectId });
+        .findOne({ _id: new ObjectId(suspectId) });
 
       if (!baseline || !suspect) {
         return NextResponse.json(
@@ -70,20 +144,17 @@ export const POST = withArmorIQ(
         );
       }
 
-      // Cosine similarity
       const cosineSim = computeCosine(
         baseline.embedding,
         suspect.embedding
       );
 
-      // Risk scoring
       const result = computeRiskScore(
         baseline.metrics,
         suspect.metrics,
         cosineSim
       );
 
-      // Anomaly detection
       const anomalies = detectAnomalies(
         baseline.metrics,
         suspect.metrics,
@@ -91,7 +162,7 @@ export const POST = withArmorIQ(
       );
 
       await db.collection('suspects').updateOne(
-        { _id: suspectId as any },
+        { _id: new ObjectId(suspectId) },
         {
           $set: {
             riskScore: result.riskScore,

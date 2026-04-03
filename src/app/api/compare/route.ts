@@ -91,7 +91,7 @@ export const POST = withArmorIQ(
       );
 
       await db.collection('suspects').updateOne(
-        { _id: suspectId },
+        { _id: suspectId as any },
         {
           $set: {
             riskScore: result.riskScore,

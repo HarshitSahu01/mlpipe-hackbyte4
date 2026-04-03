@@ -1,6 +1,8 @@
 # python/analyze.py
 import re, math
 from collections import Counter
+import json
+import argparse
 
 def extract_features(texts: list[str]) -> dict:
     """
@@ -138,3 +140,29 @@ def compute_risk_score(
         "cosineSimilarity": round(cosine_sim, 4),
         "confidence": round(min(total * 1.1, 99))
     }
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True)
+    args = parser.parse_args()
+
+    with open(args.input, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    results = []
+
+    for item in data:
+        texts = item.get("posts", [])
+        metrics = extract_features(texts)
+
+        results.append({
+            "id": item.get("id"),
+            "handle": item.get("handle"),
+            "metrics": metrics
+        })
+
+    print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    main()

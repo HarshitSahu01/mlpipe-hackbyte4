@@ -1,0 +1,46 @@
+[
+  {
+    "id": "suspect_001",
+    "name": "alexm_official",
+    "handle": "@alexm_official",
+    "platform": "Twitter",
+    "posts": [
+      "honestly can't decide if this framework is brilliant or a total disaster lol — probably both.",
+      "shipped the feature anyway, tests passing but code smell persists 😅",
+      "can't decide if this library is genius or a complete mistake tbh"
+    ],
+    "accountAge": "3 days",
+    "followerCount": 12,
+    "metadata": {
+      "registeredAfterBaseline": true,
+      "avatarSimilar": true,
+      "bioText": "developer & writer (real account)"
+    }
+  },
+  {
+    "id": "suspect_002",
+    "name": "alex_mercer_writes",
+    "handle": "@alex_mercer_writes",
+    "platform": "Medium",
+    "posts": [
+      "The framework architecture presents interesting trade-offs between performance and maintainability.",
+      "After thorough evaluation, the implementation was completed successfully with comprehensive test coverage.",
+      "The methodology demonstrates considerable promise for enterprise deployment scenarios."
+    ],
+    "accountAge": "8 months",
+    "followerCount": 340
+  },
+  {
+    "id": "suspect_003",
+    "name": "xanderm_codes",
+    "handle": "@xanderm_codes",
+    "platform": "GitHub",
+    "posts": [
+      "omg finally fixed that cursed bug!! three days of suffering 💀",
+      "it was a missing semicolon. git blame shows... it was me. classic.",
+      "anyway pushed the fix, deploying now 🚀 will this haunt me forever? yes."
+    ],
+    "accountAge": "2 years",
+    "followerCount": 1840
+  }
+]

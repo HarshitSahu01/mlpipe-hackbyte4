@@ -123,6 +123,71 @@ function detectAnomalies(
 }
 
 // ---- Handler ----
+/**
+ * @swagger
+ * /api/compare:
+ *   post:
+ *     summary: Compare a suspect profile against a baseline
+ *     description: Computes risk score, cosine similarity, and detects anomalies between a baseline and a suspect.
+ *     tags: [Compare]
+ *     security:
+ *       - userIdHeader: []
+ *         userRoleHeader: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - baselineId
+ *               - suspectId
+ *             properties:
+ *               baselineId:
+ *                 type: string
+ *                 description: The MongoDB ObjectId of the baseline DNA profile.
+ *               suspectId:
+ *                 type: string
+ *                 description: The MongoDB ObjectId of the suspect profile.
+ *     responses:
+ *       200:
+ *         description: Successfully compared profiles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 riskScore:
+ *                   type: number
+ *                   description: Computed risk score between 0 and 100.
+ *                 status:
+ *                   type: string
+ *                   enum: [VERIFIED, SUSPICIOUS, IMPOSTER]
+ *                 breakdown:
+ *                   type: object
+ *                   properties:
+ *                     embeddingRisk:
+ *                       type: number
+ *                     stylometricRisk:
+ *                       type: number
+ *                     aiPatternRisk:
+ *                       type: number
+ *                 cosineSimilarity:
+ *                   type: number
+ *                   description: Computed cosine similarity for embeddings.
+ *                 confidence:
+ *                   type: number
+ *                   description: Confidence score of the assessment.
+ *                 anomalies:
+ *                   type: array
+ *                   description: List of detected anomalies in the writing style.
+ *                   items:
+ *                     type: string
+ *       404:
+ *         description: Baseline or Suspect profile not found
+ *       500:
+ *         description: Internal Server Error
+ */
 export const POST = withArmorIQ(
   async (req: NextRequest): Promise<NextResponse> => {
     try {

@@ -93,6 +93,23 @@ export default async function TaskDetailPage({ params }) {
               taskId={serializedTask._id}
               initialStatus={serializedTask.status}
             />
+            {serializedTask.status === "completed" && serializedTask.taskType === "inference" && (
+              <a
+                href={`/api/tasks/${serializedTask._id}/result`}
+                download
+                className="btn btn-primary"
+                style={{
+                  padding: "0.4rem 1rem",
+                  fontSize: "0.82rem",
+                  textDecoration: "none",
+                  display: "inline-block",
+                  fontWeight: 600,
+                  marginLeft: "0.5rem"
+                }}
+              >
+                 Download Result
+              </a>
+            )}
           </div>
         </div>
 

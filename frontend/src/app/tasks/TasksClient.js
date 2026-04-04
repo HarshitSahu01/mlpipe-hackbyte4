@@ -13,6 +13,26 @@ function StatusBadge({ status }) {
   );
 }
 
+function TypeBadge({ taskType }) {
+  const isBuild = taskType === "build";
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      fontSize: "0.72rem",
+      fontWeight: 600,
+      padding: "2px 8px",
+      borderRadius: "99px",
+      background: isBuild ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)",
+      color: isBuild ? "#a78bfa" : "#60a5fa",
+      border: `1px solid ${isBuild ? "rgba(139,92,246,0.3)" : "rgba(59,130,246,0.3)"}`,
+    }}>
+      {isBuild ? "🔨 build" : "⚡ inference"}
+    </span>
+  );
+}
+
 export default function TasksClient({ tasks: initialTasks, pipelines, preselectedPipelineId }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
@@ -44,7 +64,6 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
         };
         setTasks((prev) => [newTask, ...prev]);
         setShowTrigger(false);
-        // Navigate to task detail for live logs
         router.push(`/tasks/${newTask._id}`);
       }
     } catch {
@@ -60,7 +79,7 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
         <div>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700 }}>Tasks</h1>
           <p className="text-secondary" style={{ fontSize: "0.88rem", marginTop: "0.25rem" }}>
-            Trigger and monitor ML inference tasks.
+            Trigger inference tasks and monitor model builds.
           </p>
         </div>
         <button
@@ -117,7 +136,7 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
         <div className="card" style={{ textAlign: "center", padding: "4rem", color: "var(--text-muted)" }}>
           <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>⚡</div>
           <div style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>No tasks yet</div>
-          <div style={{ fontSize: "0.88rem" }}>Trigger your first inference task above.</div>
+          <div style={{ fontSize: "0.88rem" }}>Trigger your first inference task above, or register a model to start a build.</div>
         </div>
       ) : (
         <div className="table-container">
@@ -125,7 +144,8 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
             <thead>
               <tr>
                 <th>Task ID</th>
-                <th>Pipeline</th>
+                <th>Type</th>
+                <th>Context</th>
                 <th>Status</th>
                 <th>Celery ID</th>
                 <th>Created</th>
@@ -133,37 +153,44 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => (
-                <tr key={task._id}>
-                  <td>
-                    <code style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      {task._id.slice(-8)}
-                    </code>
-                  </td>
-                  <td>{task.pipelineId?.name ?? "—"}</td>
-                  <td><StatusBadge status={task.status} /></td>
-                  <td>
-                    {task.celeryTaskId ? (
-                      <code style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                        {task.celeryTaskId.slice(0, 16)}…
+              {tasks.map((task) => {
+                const isBuild = task.taskType === "build";
+                const contextName = isBuild
+                  ? (task.modelId?.name ? `🔨 ${task.modelId.name}` : "Model Build")
+                  : (task.pipelineId?.name ?? "—");
+                return (
+                  <tr key={task._id}>
+                    <td>
+                      <code style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        {task._id.slice(-8)}
                       </code>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  <td className="text-muted" style={{ fontSize: "0.8rem" }}>
-                    {task.createdAt ? new Date(task.createdAt).toLocaleString() : "—"}
-                  </td>
-                  <td>
-                    <Link
-                      href={`/tasks/${task._id}`}
-                      style={{ fontSize: "0.8rem", color: "var(--accent-light)" }}
-                    >
-                      View →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td><TypeBadge taskType={task.taskType || "inference"} /></td>
+                    <td style={{ fontSize: "0.85rem" }}>{contextName}</td>
+                    <td><StatusBadge status={task.status} /></td>
+                    <td>
+                      {task.celeryTaskId ? (
+                        <code style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                          {task.celeryTaskId.slice(0, 16)}…
+                        </code>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="text-muted" style={{ fontSize: "0.8rem" }}>
+                      {task.createdAt ? new Date(task.createdAt).toLocaleString() : "—"}
+                    </td>
+                    <td>
+                      <Link
+                        href={`/tasks/${task._id}`}
+                        style={{ fontSize: "0.8rem", color: "var(--accent-light)" }}
+                      >
+                        View logs →
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -2,12 +2,13 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongoose";
 import Task from "@/models/Task";
+import MLModel from "@/models/Model";
 
 /**
  * @swagger
  * /api/webhooks/fastapi:
  *   post:
- *     summary: Celery worker callback — update task status
+ *     summary: Celery worker callback — update task status (inference or build)
  *     tags: [Webhooks]
  *     requestBody:
  *       required: true
@@ -22,6 +23,13 @@ import Task from "@/models/Task";
  *               status:
  *                 type: string
  *                 enum: [running, completed, failed]
+ *               task_type:
+ *                 type: string
+ *                 enum: [inference, build]
+ *               model_id:
+ *                 type: string
+ *               docker_image:
+ *                 type: string
  *               results_path:
  *                 type: string
  *               logs_path:
@@ -40,8 +48,25 @@ import Task from "@/models/Task";
  */
 export async function POST(req) {
   try {
-    const body = await req.json();
-    const { task_id, status, results_path, logs_path, error: workerError } = body;
+    const rawText = await req.text();
+    console.log("[webhook] Raw body received:", rawText);
+    let body;
+    try {
+      body = JSON.parse(rawText);
+    } catch (err) {
+      console.error("[webhook] JSON Parse Error:", err.message, "Raw:", rawText);
+      return NextResponse.json({ error: "Invalid JSON", details: err.message }, { status: 400 });
+    }
+    const {
+      task_id,
+      status,
+      task_type,
+      model_id,
+      docker_image,
+      results_path,
+      logs_path,
+      error: workerError,
+    } = body;
 
     if (!task_id || !status) {
       return NextResponse.json(
@@ -60,22 +85,40 @@ export async function POST(req) {
 
     await connectDB();
 
-    const update = { status };
-    if (results_path) update.resultsPath = results_path;
-    if (logs_path) update.localLogsPath = logs_path;
-    // Always persist the error message (even empty string on success clears stale errors)
-    if (workerError !== undefined) update.errorMessage = workerError;
+    // ── Update the Task document ──────────────────────────────────────────────
+    const taskUpdate = { status };
+    if (results_path) taskUpdate.resultsPath = results_path;
+    if (logs_path) taskUpdate.localLogsPath = logs_path;
+    if (workerError !== undefined) taskUpdate.errorMessage = workerError;
+    if (docker_image) taskUpdate.buildImage = docker_image;
 
-    const task = await Task.findByIdAndUpdate(task_id, update, { new: true });
+    const task = await Task.findByIdAndUpdate(task_id, taskUpdate, { new: true });
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    console.log(`[webhook] Task ${task_id} → ${status}`);
+    // ── For build tasks: also update the MLModel record ───────────────────────
+    if (task_type === "build" && model_id) {
+      const modelUpdate = {};
+      if (status === "completed") {
+        modelUpdate.status = "ready";
+        if (docker_image) modelUpdate.builtImage = docker_image;
+      } else if (status === "failed") {
+        modelUpdate.status = "error";
+      }
+      if (Object.keys(modelUpdate).length > 0) {
+        await MLModel.findByIdAndUpdate(model_id, modelUpdate);
+      }
+    }
+
+    console.log(`[webhook] Task ${task_id} (${task_type || "inference"}) → ${status}`);
     return NextResponse.json({ ok: true, task }, { status: 200 });
   } catch (error) {
     console.error("POST /api/webhooks/fastapi error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    if (error.name === 'ValidationError') {
+      console.error("Validation Details:", error.errors);
+    }
+    return NextResponse.json({ error: "Internal server error", details: error.message }, { status: 500 });
   }
 }

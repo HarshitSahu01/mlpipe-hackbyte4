@@ -57,6 +57,7 @@ export async function GET(req) {
     await connectDB();
     const tasks = await Task.find({ userId: session.userId })
       .populate("pipelineId", "name")
+      .populate("modelId", "name status")
       .sort({ createdAt: -1 });
     return NextResponse.json({ tasks }, { status: 200 });
   } catch (error) {

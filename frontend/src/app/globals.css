@@ -157,6 +157,7 @@ textarea:focus {
 .badge-pending  { background: rgba(139,139,168,0.15);color: var(--text-secondary); }
 .badge-ready    { background: rgba(34,197,94,0.15);  color: var(--success); }
 .badge-error    { background: rgba(239,68,68,0.15);  color: var(--danger); }
+.badge-building { background: rgba(245,158,11,0.15); color: #fb923c; }
 
 /* ── Sidebar nav ─────────────────────────────────────── */
 .nav-link {

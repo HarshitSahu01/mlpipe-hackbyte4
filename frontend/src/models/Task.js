@@ -9,10 +9,29 @@ const TaskSchema = new Schema(
       ref: "User",
       required: true,
     },
+    // For inference tasks
     pipelineId: {
       type: Schema.Types.ObjectId,
       ref: "Pipeline",
-      required: true,
+      required: false,
+      default: null,
+    },
+    // For build tasks
+    modelId: {
+      type: Schema.Types.ObjectId,
+      ref: "MLModel",
+      required: false,
+      default: null,
+    },
+    taskType: {
+      type: String,
+      enum: ["inference", "build"],
+      default: "inference",
+    },
+    // The Docker image tag produced by a build task
+    buildImage: {
+      type: String,
+      default: "",
     },
     status: {
       type: String,

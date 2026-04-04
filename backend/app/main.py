@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.trigger import router as trigger_router
+from app.api.build import router as build_router
 
 app = FastAPI(
     title="Predict-Xplore Compute Gateway",
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(trigger_router)
+app.include_router(build_router)
 
 
 @app.get("/health")

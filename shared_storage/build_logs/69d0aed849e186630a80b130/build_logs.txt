@@ -1,0 +1,31 @@
+[build] Starting image build for model 69d0aed849e186630a80b12f
+[build] ZIP: D:\Projects2\PersonaAudit\hackbyte4\shared_storage\models\69d0aed849e186630a80b12f\house_regressor.zip
+[build] Target image tag: predict-xplore/69d0aed849e186630a80b12f:latest
+[build] Extracting ZIP to C:\Users\prana\AppData\Local\Temp\px_build_zkrfep7b
+[build] Build context: C:\Users\prana\AppData\Local\Temp\px_build_zkrfep7b
+[build] Dockerfile: Dockerfile
+[build] Running docker build ...
+Step 1/7 : FROM python:3.9-slim
+ ---> 085da638e1b8
+Step 2/7 : WORKDIR /app
+ ---> Using cache
+ ---> bfd2cf40000e
+Step 3/7 : COPY requirements.txt .
+ ---> Using cache
+ ---> 038ed1b2fe55
+Step 4/7 : RUN pip install --no-cache-dir -r requirements.txt
+ ---> Using cache
+ ---> 14a3f03fb38a
+Step 5/7 : COPY run.py .
+ ---> Using cache
+ ---> 2c8afbef9b6d
+Step 6/7 : COPY regressor.pkl .
+ ---> Using cache
+ ---> 0953c8de6ebb
+Step 7/7 : CMD ["python", "run.py"]
+ ---> Using cache
+ ---> c44d4670317f
+Successfully built c44d4670317f
+Successfully tagged predict-xplore/69d0aed849e186630a80b12f:latest
+
+[build] ✅ Image built successfully: predict-xplore/69d0aed849e186630a80b12f:latest

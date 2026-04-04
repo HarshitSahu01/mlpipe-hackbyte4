@@ -141,7 +141,10 @@ export default function UploadModel({ onSuccess }) {
       const entries = listZipEntries(buf);
       // Accept both root-level ("run.py") and single-folder-prefixed ("model/run.py")
       const missing = REQUIRED_FILES.filter(
-        (req) => !entries.some((e) => e === req || e.endsWith("/" + req))
+        (req) => !entries.some((e) => {
+          const base = e.split("/").pop().toLowerCase();
+          return base === req.toLowerCase();
+        })
       );
 
       if (missing.length > 0) {
@@ -177,7 +180,8 @@ export default function UploadModel({ onSuccess }) {
       if (!res.ok) {
         setError(data.error || "Failed to register model");
       } else {
-        onSuccess?.(data.model);
+        // Pass both the model and buildTaskId so the parent can navigate to build logs
+        onSuccess?.(data.model, data.buildTaskId);
         router.refresh();
       }
     } catch {
@@ -421,7 +425,7 @@ export default function UploadModel({ onSuccess }) {
                 className="btn btn-primary"
                 disabled={loading || !file}
               >
-                {loading ? "Registering…" : "Register Model ✓"}
+                {loading ? "Queuing Build…" : "🔨 Build & Register"}
               </button>
             </div>
           </>

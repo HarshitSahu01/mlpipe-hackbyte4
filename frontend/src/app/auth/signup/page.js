@@ -64,6 +64,7 @@ export default function SignupPage() {
     >
       <div style={{ width: "100%", maxWidth: "420px" }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          <img src="/logo.jpg" alt="Logo" style={{ width: "56px", height: "56px", borderRadius: "12px", margin: "0 auto 1rem auto", display: "block" }} />
           <div
             style={{
               fontSize: "1.5rem",

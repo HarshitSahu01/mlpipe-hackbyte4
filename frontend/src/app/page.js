@@ -44,7 +44,12 @@ export default async function LandingPage() {
         }}
       />
 
-      <div style={{ position: "relative", maxWidth: "680px" }}>
+      <div style={{ position: "relative", maxWidth: "680px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <img 
+          src="/logo.jpg" 
+          alt="ML Pipeline Logo" 
+          style={{ width: "72px", height: "72px", borderRadius: "16px", marginBottom: "1.5rem", boxShadow: "0 4px 24px rgba(108,71,255,0.25)" }} 
+        />
         {/* Badge */}
         <div
           style={{

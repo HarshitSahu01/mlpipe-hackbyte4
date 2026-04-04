@@ -5,7 +5,7 @@ from app.api.trigger import router as trigger_router
 from app.api.build import router as build_router
 
 app = FastAPI(
-    title="Predict-Xplore Compute Gateway",
+    title="ML Pipeline Compute Gateway",
     description="Stateless ML Inference Gateway — receives pipeline triggers from Next.js and dispatches Celery tasks.",
     version="0.1.0",
 )
@@ -28,4 +28,4 @@ app.include_router(build_router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "predict-xplore-backend"}
+    return {"status": "ok", "service": "ml-pipeline-backend"}

@@ -41,7 +41,7 @@ export default function Sidebar({ user }) {
             letterSpacing: "-0.02em",
           }}
         >
-          Predict<span style={{ color: "var(--text-primary)" }}>-Xplore</span>
+          ML <span style={{ color: "var(--text-primary)" }}>Pipeline</span>
         </div>
         <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
           ML Inference SaaS

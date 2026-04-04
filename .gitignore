@@ -7,5 +7,4 @@ node_modules
 package-lock.json
 .env.local
 ml-pipeline
-shared_storage/outputs
-shared_storage/uploads
+shared_storage/*

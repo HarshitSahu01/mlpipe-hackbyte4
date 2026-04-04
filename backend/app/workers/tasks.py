@@ -146,7 +146,7 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
     task_id = payload.task_id
     webhook_url = payload.webhook_url or NEXTJS_WEBHOOK_URL
 
-    log_lines: List[str] = [f"Predict-Xplore | Task: {task_id}"]
+    log_lines: List[str] = [f"ML Pipeline | Task: {task_id}"]
 
     # Task output directory on host
     task_output_dir = SHARED_STORAGE_PATH / "outputs" / task_id

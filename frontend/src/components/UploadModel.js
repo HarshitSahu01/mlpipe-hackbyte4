@@ -139,13 +139,18 @@ export default function UploadModel({ onSuccess }) {
       }
 
       const entries = listZipEntries(buf);
-      // Accept both root-level ("run.py") and single-folder-prefixed ("model/run.py")
-      const missing = REQUIRED_FILES.filter(
-        (req) => !entries.some((e) => {
-          const base = e.split("/").pop().toLowerCase();
-          return base === req.toLowerCase();
-        })
-      );
+      // Accept both root-level ("run.py" / "inference.py") and single-folder-prefixed ("model/run.py")
+      const hasRunFile = entries.some(e => {
+        const base = e.split("/").pop().toLowerCase();
+        return base === "run.py" || base === "inference.py";
+      });
+      const hasRequirements = entries.some(e => e.split("/").pop().toLowerCase() === "requirements.txt");
+      const hasDockerfile = entries.some(e => e.split("/").pop().toLowerCase() === "dockerfile");
+
+      const missing = [];
+      if (!hasRunFile) missing.push("run.py (or inference.py)");
+      if (!hasRequirements) missing.push("requirements.txt");
+      if (!hasDockerfile) missing.push("DOCKERFILE");
 
       if (missing.length > 0) {
         setZipError(`ZIP is missing required file(s): ${missing.join(", ")}`);
@@ -339,14 +344,14 @@ export default function UploadModel({ onSuccess }) {
                 📦 Required ZIP structure
               </div>
               <div style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>
-                <div>📄 <strong>run.py</strong> — entry point; reads <code>INPUT_PATH</code>, writes <code>OUTPUT_PATH</code></div>
+                <div>📄 <strong>run.py</strong> <em>(or inference.py)</em> — entry point</div>
                 <div>📄 <strong>requirements.txt</strong> — Python dependencies</div>
-                <div>📄 <strong>DOCKERFILE</strong> — defines the container (FROM + install + CMD)</div>
+                <div>📄 <strong>DOCKERFILE</strong> — defines the container</div>
                 <div>📁 <em>weights/, configs/, ...</em> — any model artifacts</div>
               </div>
               <div style={{ marginTop: "0.5rem", color: "var(--text-muted)", fontSize: "0.75rem" }}>
                 <strong>run.py contract:</strong>{" "}
-                reads <code>$INPUT_PATH</code> (JSON), writes predictions to <code>$OUTPUT_PATH</code> (JSON).
+                reads <code>$INPUT_PATH</code> (JSON), writes to <code>$OUTPUT_PATH</code> (JSON).
                 Optionally loads weights from <code>$MODEL_PATH</code>.
               </div>
             </div>
@@ -396,7 +401,7 @@ export default function UploadModel({ onSuccess }) {
                       Drag &amp; drop or click to select
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                      .zip only — must contain run.py, requirements.txt, DOCKERFILE
+                      .zip only — must contain run.py or inference.py, requirements.txt, DOCKERFILE
                     </div>
                   </div>
                 )}

@@ -3,15 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import UploadModel from "@/components/UploadModel";
+import GitHubModel from "@/components/GitHubModel";
 
 export default function ModelsClient({ models: initialModels }) {
   const [models, setModels] = useState(initialModels);
   const [showForm, setShowForm] = useState(false);
+  const [regMode, setRegMode] = useState(null); // 'upload' or 'github'
   const router = useRouter();
   
   function handleSuccess(newModel) {
     setModels((prev) => [newModel, ...prev]);
     setShowForm(false);
+    setRegMode(null);
   }
 
   async function handleDelete(modelId) {
@@ -50,10 +53,63 @@ export default function ModelsClient({ models: initialModels }) {
         </button>
       </div>
 
-      {/* Upload form */}
+      {/* Registration Flow */}
       {showForm && (
         <div style={{ marginBottom: "2rem" }}>
-          <UploadModel onSuccess={handleSuccess} />
+          {!regMode ? (
+            <div className="card" style={{ maxWidth: "600px", padding: "2rem", textAlign: "center" }}>
+               <h3 style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "1.5rem" }}>How would you like to register your model?</h3>
+               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ height: "120px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.5rem", borderRadius: "16px" }}
+                    onClick={() => setRegMode("upload")}
+                  >
+                    <span style={{ fontSize: "1.8rem" }}>📦</span>
+                    <div style={{ fontWeight: 600 }}>Upload ZIP</div>
+                  </button>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ height: "120px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.5rem", borderRadius: "16px" }}
+                    onClick={() => setRegMode("github")}
+                  >
+                    <span style={{ fontSize: "1.8rem" }}>🐙</span>
+                    <div style={{ fontWeight: 600 }}>Import GitHub</div>
+                  </button>
+               </div>
+            </div>
+          ) : (
+            <div style={{ position: "relative" }}>
+               <button 
+                 onClick={() => setRegMode(null)} 
+                 style={{ 
+                   position: "absolute", 
+                   top: "-10px", 
+                   left: "-10px", 
+                   zIndex: 10,
+                   background: "var(--bg-secondary)",
+                   border: "1px solid var(--border)",
+                   borderRadius: "50%",
+                   width: "28px",
+                   height: "28px",
+                   cursor: "pointer",
+                   display: "flex",
+                   alignItems: "center",
+                   justifyContent: "center",
+                   fontSize: "0.7rem",
+                   boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+                 }}
+                 title="Go back"
+               >
+                 ←
+               </button>
+               {regMode === "upload" ? (
+                 <UploadModel onSuccess={handleSuccess} />
+               ) : (
+                 <GitHubModel onSuccess={handleSuccess} />
+               )}
+            </div>
+          )}
         </div>
       )}
 

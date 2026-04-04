@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.workers.build_tasks import build_model_image
+from app.workers.github_tasks import pull_from_github
 
 router = APIRouter()
 
@@ -9,7 +10,18 @@ router = APIRouter()
 class BuildPayload(BaseModel):
     task_id: str
     model_id: str
-    zip_path: str
+    zip_path: str = ""
+    context_path: str = ""
+    image_tag: str = ""
+    webhook_url: str = ""
+
+
+class GitHubPullPayload(BaseModel):
+    task_id: str
+    model_id: str
+    repo_url: str
+    branch: str = "main"
+    model_root: str = ""
     image_tag: str = ""
     webhook_url: str = ""
 
@@ -18,11 +30,8 @@ class BuildPayload(BaseModel):
 async def trigger_build(payload: BuildPayload):
     """
     Receive a model build trigger from Next.js.
-    Dispatches a Celery build task and returns the Celery task ID immediately.
     """
     try:
-        # print(payload.model_dump())
-        # print(f"build-{payload.task_id}")
         celery_task = build_model_image.apply_async(
             args=[payload.model_dump()],
             task_id=f"build-{payload.task_id}",
@@ -30,6 +39,21 @@ async def trigger_build(payload: BuildPayload):
         return {"celery_task_id": celery_task.id, "status": "queued"}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to queue build task: {exc}")
+
+
+@router.post("/github-pull")
+async def trigger_github_pull(payload: GitHubPullPayload):
+    """
+    Trigger a repository pull from GitHub and subsequent Docker build.
+    """
+    try:
+        celery_task = pull_from_github.apply_async(
+            args=[payload.model_dump()],
+            task_id=f"pull-{payload.task_id}",
+        )
+        return {"celery_task_id": celery_task.id, "status": "queued"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to queue pull task: {exc}")
 
 
 @router.delete("/build/{image_tag:path}")

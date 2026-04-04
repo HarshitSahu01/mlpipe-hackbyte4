@@ -169,18 +169,25 @@ export async function POST(req) {
 
     // Enumerate ZIP entries and check for required files
     const entries = listZipEntries(buffer);
-    const missing = REQUIRED_ZIP_FILES.filter(
-      (req) => !entries.some((e) => {
-        const base = e.split("/").pop().toLowerCase();
-        return base === req.toLowerCase();
-      })
-    );
+    
+    // Check for each core requirement
+    const hasRunFile = entries.some(e => {
+      const base = e.split("/").pop().toLowerCase();
+      return base === "run.py" || base === "inference.py";
+    });
+    const hasRequirements = entries.some(e => e.split("/").pop().toLowerCase() === "requirements.txt");
+    const hasDockerfile = entries.some(e => e.split("/").pop().toLowerCase() === "dockerfile");
+
+    const missing = [];
+    if (!hasRunFile) missing.push("run.py (or inference.py)");
+    if (!hasRequirements) missing.push("requirements.txt");
+    if (!hasDockerfile) missing.push("DOCKERFILE");
 
     if (missing.length > 0) {
       return NextResponse.json(
         {
           error: `ZIP package is missing required file(s): ${missing.join(", ")}. ` +
-                 `The ZIP must contain run.py (reads $INPUT_PATH, writes $OUTPUT_PATH), ` +
+                 `The ZIP must contain run.py or inference.py (entry point), ` +
                  `requirements.txt, and a DOCKERFILE.`,
         },
         { status: 400 }

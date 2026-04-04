@@ -53,6 +53,15 @@ const ModelSchema = new Schema(
       type: String,
       default: "python:3.10-slim",
     },
+    // Support for GitHub-sourced models
+    source: {
+      type: String,
+      enum: ["upload", "github"],
+      default: "upload",
+    },
+    repoUrl: { type: String, default: "" },
+    branch: { type: String, default: "main" },
+    modelRoot: { type: String, default: "" },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

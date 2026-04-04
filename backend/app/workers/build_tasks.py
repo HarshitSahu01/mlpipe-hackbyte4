@@ -72,7 +72,8 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
     """
     task_id = payload_dict["task_id"]
     model_id = payload_dict["model_id"]
-    zip_path = payload_dict["zip_path"]
+    zip_path = payload_dict.get("zip_path")
+    context_path = payload_dict.get("context_path")
     image_tag = payload_dict.get("image_tag", f"predict-xplore/{model_id}:latest")
     webhook_url = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
 
@@ -93,19 +94,42 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
 
     tmp_dir = None
     try:
-        # --- Extract ZIP ---
-        tmp_dir = tempfile.mkdtemp(prefix="px_build_")
-        log_lines.append(f"[build] Extracting ZIP to {tmp_dir}")
-        flush_logs()
+        if context_path:
+            log_lines.append(f"[build] Using pre-extracted context: {context_path}")
+            build_context = context_path
+        elif zip_path:
+            tmp_dir = tempfile.mkdtemp(prefix="px_build_")
+            log_lines.append(f"[build] Extracting ZIP to {tmp_dir}")
+            flush_logs()
 
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(tmp_dir)
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(tmp_dir)
 
-        # Detect if files were wrapped in a single subdirectory
-        entries = list(pathlib.Path(tmp_dir).iterdir())
-        build_context = tmp_dir
-        if len(entries) == 1 and entries[0].is_dir():
-            build_context = str(entries[0])
+            # Detect if files were wrapped in a single subdirectory
+            entries = list(pathlib.Path(tmp_dir).iterdir())
+            build_context = tmp_dir
+            if len(entries) == 1 and entries[0].is_dir():
+                build_context = str(entries[0])
+        else:
+            raise ValueError("Either zip_path or context_path must be provided.")
+
+        # --- Compatibility check: Rename inference.py to run.py if run.py is missing ---
+        ctx_path = pathlib.Path(build_context)
+        run_file = ctx_path / "run.py"
+        inference_file = None
+        
+        # Look for run.py or inference.py case-insensitively
+        for p in ctx_path.iterdir():
+            if p.name.lower() == "run.py":
+                run_file = p
+                break
+            if p.name.lower() == "inference.py":
+                inference_file = p
+
+        if not run_file.exists() and inference_file and inference_file.exists():
+            log_lines.append(f"[build] Renaming {inference_file.name} to run.py for standard compatibility")
+            inference_file.rename(ctx_path / "run.py")
+            flush_logs()
 
         # Case-insensitive search for Dockerfile/DOCKERFILE
         dockerfile_name = "DOCKERFILE"

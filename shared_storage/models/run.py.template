@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""
+run.py — Celery worker contract template
+========================================
+This file is the ENTRY POINT for your model container.
+It is called by the Celery inference worker via Docker.
+
+Environment variables injected by the worker:
+  INPUT_PATH   — absolute path to a JSON file with input data
+  OUTPUT_PATH  — absolute path where you must write prediction JSON
+  MODEL_PATH   — path to this model's ZIP (extract from here if needed)
+  TASK_ID      — the Predict-Xplore task ID
+  MODEL_ID     — the MongoDB model ID
+
+Expected INPUT format (JSON):
+  { "input_data": <any value matching your ioSchema> }
+
+Expected OUTPUT format (JSON):
+  { "prediction": <any value matching your ioSchema>, "status": "ok" }
+
+On error, write:
+  { "error": "<message>", "status": "error" }
+  and exit with a non-zero exit code.
+"""
+
+import json
+import os
+import sys
+
+INPUT_PATH  = os.environ["INPUT_PATH"]
+OUTPUT_PATH = os.environ["OUTPUT_PATH"]
+MODEL_PATH  = os.environ.get("MODEL_PATH", "")  # optional
+TASK_ID     = os.environ.get("TASK_ID", "")
+MODEL_ID    = os.environ.get("MODEL_ID", "")
+
+
+def load_model():
+    """Load your model weights / artifacts here."""
+    # Example: return joblib.load("/model/weights.pkl")
+    return None
+
+
+def predict(model, input_data):
+    """Run inference and return a JSON-serializable result."""
+    # TODO: replace with your actual inference logic
+    return {"prediction": input_data, "status": "ok"}
+
+
+def main():
+    # 1. Read input
+    with open(INPUT_PATH, "r") as f:
+        payload = json.load(f)
+
+    input_data = payload.get("input_data", payload)  # accept either wrapped or raw
+
+    # 2. Load model
+    model = load_model()
+
+    # 3. Inference
+    result = predict(model, input_data)
+    result["status"] = "ok"
+
+    # 4. Write output
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    with open(OUTPUT_PATH, "w") as f:
+        json.dump(result, f)
+
+    print(f"[run.py] Done — output written to {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+        sys.exit(0)
+    except Exception as exc:
+        import traceback
+        error_payload = {"error": str(exc), "traceback": traceback.format_exc(), "status": "error"}
+        try:
+            with open(OUTPUT_PATH, "w") as f:
+                json.dump(error_payload, f)
+        except Exception:
+            pass
+        print(f"[run.py] ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)

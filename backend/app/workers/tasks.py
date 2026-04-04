@@ -28,11 +28,13 @@ from app.schemas.task import TriggerPayload, NodeSpec, WebhookPayload
 
 load_dotenv()
 
-SHARED_STORAGE_PATH = pathlib.Path(os.getenv("SHARED_STORAGE_PATH", "../shared_storage")).resolve()
+# Resolve relative to the repo root (two levels up from this file: workers/ → app/ → backend/)
+_DEFAULT_SHARED = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "shared_storage"
+SHARED_STORAGE_PATH = pathlib.Path(os.getenv("SHARED_STORAGE_PATH", str(_DEFAULT_SHARED))).resolve()
 NEXTJS_WEBHOOK_URL = os.getenv("NEXTJS_WEBHOOK_URL", "http://localhost:3000/api/webhooks/fastapi")
 
 
-def _send_webhook(task_id: str, status: str, results_path: str = "", logs_path: str = "", error: str = "") -> None:
+def _send_webhook(task_id: str, status: str, results_path: str = "", logs_path: str = "", error: str = "", webhook_url: str = NEXTJS_WEBHOOK_URL) -> None:
     """Fire-and-forget POST to the Next.js webhook endpoint."""
     payload = {
         "task_id": task_id,
@@ -43,7 +45,7 @@ def _send_webhook(task_id: str, status: str, results_path: str = "", logs_path: 
     }
     try:
         with httpx.Client(timeout=10.0) as client:
-            client.post(NEXTJS_WEBHOOK_URL, json=payload)
+            client.post(webhook_url, json=payload)
     except Exception as exc:
         print(f"[webhook] Failed to notify Next.js: {exc}")
 
@@ -114,15 +116,18 @@ def _run_node(
         remove=False,
     )
 
-    # Stream logs
-    for line in container.logs(stream=True, follow=True):
-        decoded = line.decode("utf-8", errors="replace").rstrip()
-        log_lines.append(decoded)
-        print(f"[container:{container.short_id}] {decoded}")
+    exit_code = -1
+    try:
+        # Stream logs — guarantee cleanup even if streaming raises
+        for line in container.logs(stream=True, follow=True):
+            decoded = line.decode("utf-8", errors="replace").rstrip()
+            log_lines.append(decoded)
+            print(f"[container:{container.short_id}] {decoded}")
 
-    result = container.wait()
-    exit_code = result.get("StatusCode", -1)
-    container.remove(force=True)
+        result = container.wait()
+        exit_code = result.get("StatusCode", -1)
+    finally:
+        container.remove(force=True)
 
     log_lines.append(f"--- Exit code: {exit_code} ---\n")
     return exit_code == 0
@@ -136,11 +141,7 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
     """
     payload = TriggerPayload(**payload_dict)
     task_id = payload.task_id
-    webhook_url_override = payload.webhook_url or NEXTJS_WEBHOOK_URL
-
-    # Override module-level URL with per-task URL
-    global NEXTJS_WEBHOOK_URL
-    NEXTJS_WEBHOOK_URL = webhook_url_override
+    webhook_url = payload.webhook_url or NEXTJS_WEBHOOK_URL
 
     log_lines: List[str] = [f"Predict-Xplore | Task: {task_id}"]
 
@@ -153,12 +154,14 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
         pathlib.Path(logs_path).write_text("\n".join(log_lines), encoding="utf-8")
 
     # Notify Next.js: running
-    _send_webhook(task_id, "running", logs_path=logs_path)
+    _send_webhook(task_id, "running", logs_path=logs_path, webhook_url=webhook_url)
 
     docker_client = docker.from_env()
 
     try:
-        sorted_nodes = sorted(payload.nodes, key=lambda n: payload.nodes.index(n))
+        # Nodes arrive already sorted by `order` from the Next.js trigger route.
+        # Preserve that ordering; don't re-sort (the O(n²) index-based sort was wrong).
+        sorted_nodes = list(payload.nodes)
         final_output_path = ""
 
         for idx, node in enumerate(sorted_nodes):
@@ -172,7 +175,7 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
                 error_msg = f"Node {node.model_id} failed (non-zero exit code)"
                 log_lines.append(f"[ERROR] {error_msg}")
                 flush_logs()
-                _send_webhook(task_id, "failed", logs_path=logs_path, error=error_msg)
+                _send_webhook(task_id, "failed", logs_path=logs_path, error=error_msg, webhook_url=webhook_url)
                 return {"status": "failed", "error": error_msg}
 
             final_output_path = node.output_path
@@ -185,6 +188,7 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
             "completed",
             results_path=final_output_path,
             logs_path=logs_path,
+            webhook_url=webhook_url,
         )
         return {"status": "completed", "results_path": final_output_path}
 
@@ -192,5 +196,5 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
         error_msg = traceback.format_exc()
         log_lines.append(f"\n[EXCEPTION]\n{error_msg}")
         flush_logs()
-        _send_webhook(task_id, "failed", logs_path=logs_path, error=str(exc))
+        _send_webhook(task_id, "failed", logs_path=logs_path, error=str(exc), webhook_url=webhook_url)
         raise

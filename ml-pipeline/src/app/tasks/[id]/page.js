@@ -37,9 +37,14 @@ export default async function TaskDetailPage({ params }) {
 
   if (!task) notFound();
 
+  // Serialize user — ObjectId and Date are not plain RSC-safe objects
+  const serializedUser = user
+    ? { _id: user._id.toString(), name: user.name ?? "", email: user.email ?? "", role: user.role ?? "", credits: user.credits ?? 0 }
+    : null;
+
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar user={user} />
+      <Sidebar user={serializedUser} />
 
       <main style={{ flex: 1, padding: "2rem", overflowY: "auto" }}>
         {/* Back + header */}

@@ -75,15 +75,35 @@ export default async function DashboardPage() {
       .lean(),
   ]);
 
+  // Serialize: ObjectId and Date are not plain objects — RSC will throw otherwise
+  const serializedUser = user
+    ? {
+        _id: user._id.toString(),
+        name: user.name ?? "",
+        email: user.email ?? "",
+        role: user.role ?? "",
+        credits: user.credits ?? 0,
+      }
+    : null;
+
+  const serializedTasks = recentTasks.map((t) => ({
+    _id: t._id.toString(),
+    status: t.status,
+    createdAt: t.createdAt?.toISOString?.() ?? null,
+    pipelineId: t.pipelineId
+      ? { _id: t.pipelineId._id.toString(), name: t.pipelineId.name }
+      : null,
+  }));
+
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar user={user} />
+      <Sidebar user={serializedUser} />
 
       <main style={{ flex: 1, padding: "2rem", overflowY: "auto" }}>
         {/* Header */}
         <div style={{ marginBottom: "2rem" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Welcome back, {user?.name?.split(" ")[0]} 👋
+            Welcome back, {serializedUser?.name?.split(" ")[0]} 👋
           </h1>
           <p className="text-secondary" style={{ fontSize: "0.9rem" }}>
             Here's what's happening across your ML pipelines.
@@ -102,7 +122,7 @@ export default async function DashboardPage() {
           <StatCard label="Models registered" value={totalModels} icon="◈" color="#6c47ff" />
           <StatCard label="Pipelines" value={totalPipelines} icon="⟳" color="#22c55e" />
           <StatCard label="Tasks run" value={totalTasks} icon="⚡" color="#f59e0b" />
-          <StatCard label="Credits" value={user?.credits ?? 0} icon="◎" color="#8b6dff" />
+          <StatCard label="Credits" value={serializedUser?.credits ?? 0} icon="◎" color="#8b6dff" />
         </div>
 
         {/* Quick actions */}
@@ -129,7 +149,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
 
-          {recentTasks.length === 0 ? (
+          {serializedTasks.length === 0 ? (
             <div
               style={{
                 padding: "3rem",
@@ -156,11 +176,11 @@ export default async function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentTasks.map((task) => (
+                  {serializedTasks.map((task) => (
                     <tr key={task._id}>
                       <td>
                         <code style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                          {task._id.toString().slice(-8)}
+                          {task._id.slice(-8)}
                         </code>
                       </td>
                       <td>{task.pipelineId?.name ?? "—"}</td>
@@ -168,7 +188,7 @@ export default async function DashboardPage() {
                         <StatusBadge status={task.status} />
                       </td>
                       <td className="text-muted" style={{ fontSize: "0.8rem" }}>
-                        {new Date(task.createdAt).toLocaleString()}
+                        {task.createdAt ? new Date(task.createdAt).toLocaleString() : "—"}
                       </td>
                       <td>
                         <Link

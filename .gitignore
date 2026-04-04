@@ -1,0 +1,8 @@
+__pycache__
+backend/tests/
+.env
+pnpm-lock.yaml
+node_modules
+.next
+package-lock.json
+.env.local

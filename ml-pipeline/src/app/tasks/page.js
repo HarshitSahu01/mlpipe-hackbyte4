@@ -47,11 +47,16 @@ export default async function TasksPage({ searchParams }) {
     name: p.name,
   });
 
+  // Serialize user — ObjectId and Date are not plain RSC-safe objects
+  const serializedUser = user
+    ? { _id: user._id.toString(), name: user.name ?? "", email: user.email ?? "", role: user.role ?? "", credits: user.credits ?? 0 }
+    : null;
+
   const { pipeline: preselectedPipelineId } = await searchParams;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar user={user} />
+      <Sidebar user={serializedUser} />
       <TasksClient
         tasks={tasks.map(serialize)}
         pipelines={pipelines.map(serializePipeline)}

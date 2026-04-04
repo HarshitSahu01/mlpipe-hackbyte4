@@ -31,6 +31,10 @@ const TaskSchema = new Schema(
       type: String,
       default: "",
     },
+    errorMessage: {
+      type: String,
+      default: "",
+    },
   },
   {
     timestamps: true,

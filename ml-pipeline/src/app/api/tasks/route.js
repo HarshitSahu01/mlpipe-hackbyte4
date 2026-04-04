@@ -138,8 +138,10 @@ export async function POST(req) {
       task.celeryTaskId = celeryTaskId;
       task.status = "running";
     } else {
-      // FastAPI unavailable — keep as queued so operator can retry
-      console.warn("FastAPI did not accept the trigger — task stays queued.");
+      // FastAPI unavailable or returned an error — mark task as failed immediately
+      // so the user sees an actionable state instead of an eternal "queued" status.
+      console.warn("FastAPI did not accept the trigger — marking task as failed.");
+      task.status = "failed";
     }
 
     await task.save();

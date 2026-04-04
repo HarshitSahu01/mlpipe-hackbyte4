@@ -26,7 +26,11 @@ export default async function ModelsPage() {
     MLModel.find({ ownerId: session.userId }).sort({ createdAt: -1 }).lean(),
   ]);
 
-  // Serialize for client
+  // Serialize for client — ObjectId and Date are not plain RSC-safe objects
+  const serializedUser = user
+    ? { _id: user._id.toString(), name: user.name ?? "", email: user.email ?? "", role: user.role ?? "", credits: user.credits ?? 0 }
+    : null;
+
   const serialized = models.map((m) => ({
     ...m,
     _id: m._id.toString(),
@@ -36,7 +40,7 @@ export default async function ModelsPage() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar user={user} />
+      <Sidebar user={serializedUser} />
       <ModelsClient models={serialized} />
     </div>
   );

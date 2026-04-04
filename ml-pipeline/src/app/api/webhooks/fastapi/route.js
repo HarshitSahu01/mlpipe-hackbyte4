@@ -63,6 +63,8 @@ export async function POST(req) {
     const update = { status };
     if (results_path) update.resultsPath = results_path;
     if (logs_path) update.localLogsPath = logs_path;
+    // Always persist the error message (even empty string on success clears stale errors)
+    if (workerError !== undefined) update.errorMessage = workerError;
 
     const task = await Task.findByIdAndUpdate(task_id, update, { new: true });
 

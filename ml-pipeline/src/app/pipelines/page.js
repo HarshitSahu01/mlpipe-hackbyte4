@@ -43,9 +43,14 @@ export default async function PipelinesPage() {
     createdAt: m.createdAt?.toISOString?.() ?? null,
   });
 
+  // Serialize user — ObjectId and Date are not plain RSC-safe objects
+  const serializedUser = user
+    ? { _id: user._id.toString(), name: user.name ?? "", email: user.email ?? "", role: user.role ?? "", credits: user.credits ?? 0 }
+    : null;
+
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar user={user} />
+      <Sidebar user={serializedUser} />
       <PipelinesClient
         pipelines={pipelines.map(serializePipeline)}
         models={models.map(serializeModel)}

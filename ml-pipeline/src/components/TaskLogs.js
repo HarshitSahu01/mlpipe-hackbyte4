@@ -13,49 +13,49 @@ export default function TaskLogs({ taskId, initialStatus }) {
   const logRef = useRef(null);
   const intervalRef = useRef(null);
 
-  async function fetchTask() {
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`);
-      if (!res.ok) return;
-      const { task } = await res.json();
-      setStatus(task.status);
-      if (task.resultsPath) setResultsPath(task.resultsPath);
-      return task;
-    } catch {
-      return null;
-    }
-  }
-
-  async function fetchLogs() {
-    try {
-      const res = await fetch(`/api/tasks/${taskId}/logs`);
-      if (res.headers.get("content-type")?.includes("text/plain")) {
-        const text = await res.text();
-        setLogs(text || "No logs yet.");
-      } else {
-        const data = await res.json();
-        setLogs(data.logs || "No logs yet.");
-      }
-    } catch {
-      setLogs("Failed to fetch logs.");
-    }
-  }
-
-  async function poll() {
-    const task = await fetchTask();
-    await fetchLogs();
-    if (task && TERMINAL_STATUSES.has(task.status)) {
-      clearInterval(intervalRef.current);
-    }
-  }
-
   useEffect(() => {
+    async function fetchTask() {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`);
+        if (!res.ok) return null;
+        const { task } = await res.json();
+        setStatus(task.status);
+        if (task.resultsPath) setResultsPath(task.resultsPath);
+        return task;
+      } catch {
+        return null;
+      }
+    }
+
+    async function fetchLogs() {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/logs`);
+        if (res.headers.get("content-type")?.includes("text/plain")) {
+          const text = await res.text();
+          setLogs(text || "No logs yet.");
+        } else {
+          const data = await res.json();
+          setLogs(data.logs || "No logs yet.");
+        }
+      } catch {
+        setLogs("Failed to fetch logs.");
+      }
+    }
+
+    async function poll() {
+      const task = await fetchTask();
+      await fetchLogs();
+      if (task && TERMINAL_STATUSES.has(task.status)) {
+        clearInterval(intervalRef.current);
+      }
+    }
+
     poll();
     if (!TERMINAL_STATUSES.has(initialStatus)) {
       intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
     }
     return () => clearInterval(intervalRef.current);
-  }, [taskId]);
+  }, [taskId, initialStatus]);
 
   // Auto-scroll to bottom of log panel
   useEffect(() => {

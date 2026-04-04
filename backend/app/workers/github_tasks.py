@@ -36,13 +36,14 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
       - image_tag:    str (optional)
       - webhook_url:  str (optional)
     """
-    task_id    = payload_dict["task_id"]
-    model_id   = payload_dict["model_id"]
-    repo_url   = payload_dict["repo_url"].rstrip("/")
-    branch     = payload_dict.get("branch", "main")
-    model_root = payload_dict.get("model_root", "").strip("/")
-    image_tag  = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
-    webhook_url = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
+    task_id           = payload_dict["task_id"]
+    model_id          = payload_dict["model_id"]
+    repo_url          = payload_dict["repo_url"].rstrip("/")
+    branch            = payload_dict.get("branch", "main")
+    model_root        = payload_dict.get("model_root", "").strip("/")
+    dockerfile_folder = payload_dict.get("dockerfile_folder", "docker")
+    image_tag         = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
+    webhook_url       = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
 
     # --- Unified log file (created fresh here, appended by build task) ---
     task_output_dir = SHARED_STORAGE_PATH / "build_logs" / task_id
@@ -97,8 +98,11 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
             shutil.rmtree(final_source_dir)
         final_source_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Copying files to shared storage...")
+        logger.info(f"Copying source files (excluding /{dockerfile_folder}) to shared storage...")
         for item in os.listdir(source_context):
+            # Skip the dockerfile subfolder — Dockerfile is handled separately below
+            if item.lower() == dockerfile_folder.lower():
+                continue
             s = os.path.join(source_context, item)
             d = os.path.join(str(final_source_dir), item)
             if os.path.isdir(s):
@@ -106,6 +110,33 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
             else:
                 shutil.copy2(s, d)
 
+        # --- Resolve Dockerfile from the dedicated subfolder ---
+        docker_subdir = os.path.join(source_context, dockerfile_folder)
+        if not os.path.isdir(docker_subdir):
+            raise FileNotFoundError(
+                f"No '/{dockerfile_folder}' sub-folder found inside model root "
+                f"'{model_root or '(repo root)'}'. "
+                f"Please add a '{dockerfile_folder}/' directory containing your Dockerfile."
+            )
+
+        dockerfile_src = None
+        for fname in os.listdir(docker_subdir):
+            if fname.lower() == "dockerfile":
+                dockerfile_src = os.path.join(docker_subdir, fname)
+                break
+
+        if dockerfile_src is None:
+            raise FileNotFoundError(
+                f"No Dockerfile found inside the '/{dockerfile_folder}' sub-folder of "
+                f"model root '{model_root or '(repo root)'}'. "
+                f"Expected: <repo>/{model_root}/{dockerfile_folder}/Dockerfile"
+            )
+
+        shutil.copy2(dockerfile_src, os.path.join(str(final_source_dir), "Dockerfile"))
+        logger.success(
+            f"Dockerfile copied from /{dockerfile_folder}/Dockerfile "
+            f"→ {final_source_dir}/Dockerfile"
+        )
         logger.success(f"Source pulled successfully into {final_source_dir}")
         logger.info("Triggering Docker build...")
 

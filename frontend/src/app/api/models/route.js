@@ -20,12 +20,16 @@ function listZipEntries(buf) {
   const names = [];
   let offset = 0;
   while (offset + 30 < buf.length) {
-    if (buf[offset] === 0x50 && buf[offset + 1] === 0x4b &&
-        buf[offset + 2] === 0x03 && buf[offset + 3] === 0x04) {
-      const fnLen  = buf.readUInt16LE(offset + 26);
-      const exLen  = buf.readUInt16LE(offset + 28);
-      const cSize  = buf.readUInt32LE(offset + 18);
-      const name   = buf.slice(offset + 30, offset + 30 + fnLen).toString("utf8");
+    if (
+      buf[offset] === 0x50 &&
+      buf[offset + 1] === 0x4b &&
+      buf[offset + 2] === 0x03 &&
+      buf[offset + 3] === 0x04
+    ) {
+      const fnLen = buf.readUInt16LE(offset + 26);
+      const exLen = buf.readUInt16LE(offset + 28);
+      const cSize = buf.readUInt32LE(offset + 18);
+      const name = buf.slice(offset + 30, offset + 30 + fnLen).toString("utf8");
       names.push(name);
       offset += 30 + fnLen + exLen + cSize;
     } else {
@@ -101,11 +105,16 @@ export async function GET(req) {
 
   try {
     await connectDB();
-    const models = await MLModel.find({ ownerId: session.userId }).sort({ createdAt: -1 });
+    const models = await MLModel.find({ ownerId: session.userId }).sort({
+      createdAt: -1,
+    });
     return NextResponse.json({ models }, { status: 200 });
   } catch (error) {
     console.error("GET /api/models error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -115,22 +124,28 @@ export async function POST(req) {
 
   try {
     const formData = await req.formData();
-    const name        = formData.get("name");
+    const name = formData.get("name");
     const description = formData.get("description") || "";
     const dockerImage = formData.get("dockerImage") || "python:3.10-slim";
-    const ioSchemaRaw = formData.get("ioSchema") || '{"inputs":[],"outputs":[]}';
+    const ioSchemaRaw =
+      formData.get("ioSchema") || '{"inputs":[],"outputs":[]}';
     const useAiPackager = formData.get("useAiPackager") === "true";
-    const file        = formData.get("file");
+    const file = formData.get("file");
 
     // ── Basic field validation ────────────────────────────────────────────────
     if (!name?.trim()) {
-      return NextResponse.json({ error: "Model name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Model name is required" },
+        { status: 400 },
+      );
     }
 
     if (!ALLOWED_DOCKER_IMAGES.has(dockerImage)) {
       return NextResponse.json(
-        { error: `dockerImage must be one of: ${[...ALLOWED_DOCKER_IMAGES].join(", ")}` },
-        { status: 400 }
+        {
+          error: `dockerImage must be one of: ${[...ALLOWED_DOCKER_IMAGES].join(", ")}`,
+        },
+        { status: 400 },
       );
     }
 
@@ -138,14 +153,20 @@ export async function POST(req) {
     try {
       ioSchema = JSON.parse(ioSchemaRaw);
     } catch {
-      return NextResponse.json({ error: "ioSchema must be valid JSON" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ioSchema must be valid JSON" },
+        { status: 400 },
+      );
     }
 
     // ── ZIP file validation ───────────────────────────────────────────────────
     if (!file || typeof file !== "object") {
       return NextResponse.json(
-        { error: "A model ZIP package is required (run.py, requirements.txt, DOCKERFILE)." },
-        { status: 400 }
+        {
+          error:
+            "A model ZIP package is required (run.py, requirements.txt, DOCKERFILE).",
+        },
+        { status: 400 },
       );
     }
 
@@ -156,7 +177,7 @@ export async function POST(req) {
     if (!isZipFile && !isPyFile) {
       return NextResponse.json(
         { error: "Uploaded file must be a .zip archive or a .py script." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -165,30 +186,42 @@ export async function POST(req) {
     if (!useAiPackager) {
       if (!isZipFile) {
         return NextResponse.json(
-          { error: "Uploaded file must be a .zip archive unless using AI Packager." },
-          { status: 400 }
+          {
+            error:
+              "Uploaded file must be a .zip archive unless using AI Packager.",
+          },
+          { status: 400 },
         );
       }
 
       // Check ZIP magic bytes: PK\x03\x04
-      if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b ||
-          buffer[2] !== 0x03 || buffer[3] !== 0x04) {
+      if (
+        buffer.length < 4 ||
+        buffer[0] !== 0x50 ||
+        buffer[1] !== 0x4b ||
+        buffer[2] !== 0x03 ||
+        buffer[3] !== 0x04
+      ) {
         return NextResponse.json(
           { error: "File does not appear to be a valid ZIP archive." },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
       // Enumerate ZIP entries and check for required files
       const entries = listZipEntries(buffer);
-      
+
       // Check for each core requirement
-      const hasRunFile = entries.some(e => {
+      const hasRunFile = entries.some((e) => {
         const base = e.split("/").pop().toLowerCase();
         return base === "run.py" || base === "inference.py";
       });
-      const hasRequirements = entries.some(e => e.split("/").pop().toLowerCase() === "requirements.txt");
-      const hasDockerfile = entries.some(e => e.split("/").pop().toLowerCase() === "dockerfile");
+      const hasRequirements = entries.some(
+        (e) => e.split("/").pop().toLowerCase() === "requirements.txt",
+      );
+      const hasDockerfile = entries.some(
+        (e) => e.split("/").pop().toLowerCase() === "dockerfile",
+      );
 
       const missing = [];
       if (!hasRunFile) missing.push("run.py (or inference.py)");
@@ -198,11 +231,12 @@ export async function POST(req) {
       if (missing.length > 0) {
         return NextResponse.json(
           {
-            error: `ZIP package is missing required file(s): ${missing.join(", ")}. ` +
-                   `The ZIP must contain run.py or inference.py (entry point), ` +
-                   `requirements.txt, and a DOCKERFILE.`,
+            error:
+              `ZIP package is missing required file(s): ${missing.join(", ")}. ` +
+              `The ZIP must contain run.py or inference.py (entry point), ` +
+              `requirements.txt, and a DOCKERFILE.`,
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -220,9 +254,9 @@ export async function POST(req) {
       status: "building",
     });
 
-    const modelDir  = path.join(SHARED_STORAGE, "models", model._id.toString());
+    const modelDir = path.join(SHARED_STORAGE, "models", model._id.toString());
     await fs.mkdir(modelDir, { recursive: true });
-    const filePath  = path.join(modelDir, fileName);
+    const filePath = path.join(modelDir, fileName);
     await fs.writeFile(filePath, buffer);
 
     model.localModelPath = filePath;
@@ -280,9 +314,15 @@ export async function POST(req) {
     model.buildTaskId = buildTask._id.toString();
     await model.save();
 
-    return NextResponse.json({ model, buildTaskId: buildTask._id.toString() }, { status: 201 });
+    return NextResponse.json(
+      { model, buildTaskId: buildTask._id.toString() },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/models error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

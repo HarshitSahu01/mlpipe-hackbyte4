@@ -32,19 +32,22 @@ export default function Sidebar({ user }) {
       }}
     >
       {/* Logo */}
-      <div style={{ marginBottom: "2rem" }}>
-        <div
-          style={{
-            fontSize: "1.1rem",
-            fontWeight: 700,
-            color: "var(--accent-light)",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          ML <span style={{ color: "var(--text-primary)" }}>Pipeline</span>
-        </div>
-        <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
-          ML Inference SaaS
+      <div style={{ marginBottom: "2rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <img src="/logo.jpg" alt="Logo" style={{ width: "36px", height: "36px", borderRadius: "8px", objectFit: "cover" }} />
+        <div>
+          <div
+            style={{
+              fontSize: "1.1rem",
+              fontWeight: 700,
+              color: "var(--accent-light)",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            ML <span style={{ color: "var(--text-primary)" }}>Pipeline</span>
+          </div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "2px" }}>
+            ML Inference SaaS
+          </div>
         </div>
       </div>
 

@@ -87,14 +87,23 @@ export async function POST(req, { params }) {
     }
 
     if (!GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: "GEMINI_API_KEY is not configured in environment." },
-        { status: 500 },
-      );
+      // No API key — return a best-effort structured analysis from the error message/logs directly
+      const errorLine = task.errorMessage || "Unknown error";
+      return NextResponse.json({
+        analysis: `ERROR SUMMARY:\n${errorLine}\n\nROOT CAUSE:\nGEMINI_API_KEY is not configured in the environment so automatic AI analysis is unavailable. The error above was extracted directly from the task log.\n\nRESOLUTION:\nAdd GEMINI_API_KEY to your frontend .env file and restart the server to enable full AI root-cause analysis.\n\nNOTES:\nReview the full execution logs above for detailed traceback information.`,
+      });
     }
 
-    // 2. Build the precise prompt
-    const prompt = `Output format (plain text, strictly follow):
+    // 2. Build the precise prompt — include actual log content
+    const truncatedLogs = logContent.slice(-6000); // Last 6k chars — most relevant for failures
+    const prompt = `You are an expert DevOps and MLOps engineer. A model build or inference task just failed. Analyze the following execution logs and produce a structured diagnosis.
+
+EXECUTION LOGS:
+\`\`\`
+${truncatedLogs}
+\`\`\`
+
+Output format (plain text, strictly follow):
 
 ERROR SUMMARY:
 Provide a concise but descriptive summary of the failure, clearly mentioning the affected component and the type of failure.
@@ -123,8 +132,8 @@ Be precise, technical, and focused on diagnosis. Do not repeat or dump logs. Avo
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.2, // Low temp for analytical consistency
-            maxOutputTokens: 1000,
+            temperature: 0.2,
+            maxOutputTokens: 1500,
           },
         }),
       },

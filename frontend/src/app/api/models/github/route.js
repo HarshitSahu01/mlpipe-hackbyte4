@@ -12,7 +12,7 @@ export async function POST(req) {
 
   try {
     const body = await req.json();
-    const { name, description, dockerImage, ioSchema, repoUrl, branch, modelRoot, dockerfileFolder } = body;
+    const { name, description, dockerImage, ioSchema, repoUrl, branch, modelRoot, useAgent } = body;
 
     // ── Validation ────────────────────────────────────────────────────────────
     if (!name?.trim()) return NextResponse.json({ error: "Model name is required" }, { status: 400 });
@@ -55,6 +55,7 @@ export async function POST(req) {
       dockerfile_folder: dockerfileFolder || "docker",
       image_tag: imageTag,
       webhook_url: webhookUrl,
+      use_agent: useAgent || false,
     };
 
     const fastapiRes = await fetch(`${FASTAPI_URL}/github-pull`, {

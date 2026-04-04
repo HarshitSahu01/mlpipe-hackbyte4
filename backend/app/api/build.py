@@ -26,6 +26,7 @@ class GitHubPullPayload(BaseModel):
     dockerfile_folder: str = "docker"
     image_tag: str = ""
     webhook_url: str = ""
+    use_agent: bool = False
 
 
 @router.post("/build")

@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from app.core.celery_app import celery_app
 from app.workers.build_tasks import build_model_image, _send_build_webhook
+from app.workers.agent_tasks import package_with_agent
 from app.workers.log_helpers import TaskLogger
 
 load_dotenv()
@@ -36,14 +37,14 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
       - image_tag:    str (optional)
       - webhook_url:  str (optional)
     """
-    task_id           = payload_dict["task_id"]
-    model_id          = payload_dict["model_id"]
-    repo_url          = payload_dict["repo_url"].rstrip("/")
-    branch            = payload_dict.get("branch", "main")
-    model_root        = payload_dict.get("model_root", "").strip("/")
-    dockerfile_folder = payload_dict.get("dockerfile_folder", "docker")
-    image_tag         = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
-    webhook_url       = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
+    task_id    = payload_dict["task_id"]
+    model_id   = payload_dict["model_id"]
+    repo_url   = payload_dict["repo_url"].rstrip("/")
+    branch     = payload_dict.get("branch", "main")
+    model_root = payload_dict.get("model_root", "").strip("/")
+    image_tag  = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
+    webhook_url = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
+    use_agent  = payload_dict.get("use_agent", False)
 
     # --- Unified log file (created fresh here, appended by build task) ---
     task_output_dir = SHARED_STORAGE_PATH / "build_logs" / task_id
@@ -138,18 +139,29 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
             f"→ {final_source_dir}/Dockerfile"
         )
         logger.success(f"Source pulled successfully into {final_source_dir}")
-        logger.info("Triggering Docker build...")
-
-        # Pass logs_path so the build task APPENDS to this same file
-        build_payload = {
-            "task_id":      task_id,
-            "model_id":     model_id,
-            "context_path": str(final_source_dir),
-            "image_tag":    image_tag,
-            "webhook_url":  webhook_url,
-            "logs_path":    logger.path,   # ← unified log handoff
-        }
-        build_model_image.apply_async(args=[build_payload], task_id=f"build-{task_id}")
+        if use_agent:
+            logger.info("Triggering AI Packager (ArmorIQ + OpenAI) for further refactoring...")
+            agent_payload = {
+                "task_id":      task_id,
+                "model_id":     model_id,
+                "input_path":   str(final_source_dir),
+                "image_tag":    image_tag,
+                "webhook_url":  webhook_url,
+                "logs_path":    logger.path,
+            }
+            package_with_agent.apply_async(args=[agent_payload], task_id=f"agent-{task_id}")
+        else:
+            logger.info("Triggering direct Docker build...")
+            # Pass logs_path so the build task APPENDS to this same file
+            build_payload = {
+                "task_id":      task_id,
+                "model_id":     model_id,
+                "context_path": str(final_source_dir),
+                "image_tag":    image_tag,
+                "webhook_url":  webhook_url,
+                "logs_path":    logger.path,   # ← unified log handoff
+            }
+            build_model_image.apply_async(args=[build_payload], task_id=f"build-{task_id}")
 
         return {"status": "success", "message": "Source pulled and build triggered"}
 

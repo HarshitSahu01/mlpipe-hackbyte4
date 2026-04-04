@@ -4,20 +4,22 @@ Celery task: build_model_image
 
 Given a model ID and a ZIP file path (or pre-extracted context dir):
 1. Unzips the package if needed
-2. Patches the Dockerfile to use uv for fast installs
-3. Runs `docker build`, streaming every log line to the shared task log
+2. Runs `docker build` with the user's Dockerfile exactly as-is
+3. Streams every log line to the shared task log
 4. Tags the resulting image as ml-pipeline/<model_id>:latest
 5. POSTs a webhook back to Next.js with status + logs_path
 
 All log output appends to the SAME file used by upstream tasks
 (github_tasks, agent_tasks) so the frontend sees one unified stream.
+
+NOTE: The Dockerfile is never modified — apt installs, custom base images,
+and any system-level setup run exactly as the user wrote them.
 """
 from __future__ import annotations
 
 import json
 import os
 import pathlib
-import re
 import shutil
 import tempfile
 import traceback
@@ -65,37 +67,6 @@ def _send_build_webhook(
     except Exception as exc:
         print(f"[webhook] Failed to notify Next.js: {exc}")
 
-
-def _patch_dockerfile_for_uv(dockerfile_path: pathlib.Path, logger: TaskLogger) -> None:
-    """
-    Transparently patches a Dockerfile to use `uv` for pip installs.
-    - If `uv` is already present, it's a no-op.
-    - Injects `RUN pip install uv` after the first FROM line.
-    - Replaces `pip install` with `uv pip install --system` in all RUN commands.
-    """
-    content = dockerfile_path.read_text(encoding="utf-8")
-
-    # No-op if already using uv
-    if "uv pip install" in content or "pip install uv" in content:
-        logger.info("[uv] Dockerfile already uses uv — skipping patch")
-        return
-
-    lines = content.splitlines()
-    patched = []
-    uv_injected = False
-
-    for line in lines:
-        if line.strip().upper().startswith("FROM ") and not uv_injected:
-            patched.append(line)
-            patched.append("RUN pip install uv")
-            uv_injected = True
-            continue
-        patched.append(re.sub(r"\bpip3?\s+install\b", "uv pip install --system", line))
-
-    new_content = "\n".join(patched) + "\n"
-    if new_content != content:
-        dockerfile_path.write_text(new_content, encoding="utf-8")
-        logger.success("[uv] Dockerfile patched: pip → uv pip install --system ⚡")
 
 
 @celery_app.task(bind=True, name="build_model_image", max_retries=0)
@@ -186,9 +157,6 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
         if not dockerfile_path.exists():
             raise FileNotFoundError(f"Dockerfile not found in {build_context}")
 
-        # --- Patch Dockerfile to use uv ---
-        logger.section("⚡  uv Performance Patch")
-        _patch_dockerfile_for_uv(dockerfile_path, logger)
 
         logger.info(f"Build context: {build_context}")
         logger.info(f"Dockerfile: {dockerfile_path.name}")

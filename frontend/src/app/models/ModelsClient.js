@@ -8,6 +8,11 @@ export default function ModelsClient({ models: initialModels }) {
   const [models, setModels] = useState(initialModels);
   const [showForm, setShowForm] = useState(false);
   const router = useRouter();
+  
+  function handleSuccess(newModel) {
+    setModels((prev) => [newModel, ...prev]);
+    setShowForm(false);
+  }
 
   async function handleDelete(modelId) {
     if (!confirm("Are you sure you want to delete this model? This will also remove the Docker image and all associated build logs.")) return;

@@ -1,6 +1,6 @@
 // src/app/tasks/TasksClient.js
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -40,6 +40,11 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
   const [selectedPipeline, setSelectedPipeline] = useState(preselectedPipelineId);
   const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function handleTrigger(e) {
     e.preventDefault();
@@ -178,7 +183,7 @@ export default function TasksClient({ tasks: initialTasks, pipelines, preselecte
                       )}
                     </td>
                     <td className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      {task.createdAt ? new Date(task.createdAt).toLocaleString() : "—"}
+                      {mounted && task.createdAt ? new Date(task.createdAt).toLocaleString() : "—"}
                     </td>
                     <td>
                       <Link

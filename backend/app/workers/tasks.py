@@ -104,6 +104,9 @@ def _run_node(
         "MODEL_ID": node.model_id,
     }
 
+    log_lines.append(f"[DEBUG] INPUT_PATH going into container: {environment['INPUT_PATH']}")
+    log_lines.append(f"[DEBUG] OUTPUT_PATH going into container: {environment['OUTPUT_PATH']}")
+
     _pull_image(client, node.docker_image)
 
     log_lines.append(f"\n--- Node {node.model_id} | image: {node.docker_image} ---")
@@ -166,36 +169,44 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
         import zipfile
         import shutil
 
-        # We need a place to store extracted inputs if any
+        # Ensure base directories exist on host
         run_input_base = SHARED_STORAGE_PATH / "runs" / task_id
         run_input_base.mkdir(parents=True, exist_ok=True)
 
         for idx, node in enumerate(sorted_nodes):
             log_lines.append(f"\n[{idx + 1}/{len(sorted_nodes)}] Running node: {node.model_id}")
+            
+            log_lines.append(f"[DEBUG] Raw node.input_path from payload: {node.input_path}")
+            input_p_check = pathlib.Path(node.input_path).resolve()
+            log_lines.append(f"[DEBUG] Resolved: {input_p_check}")
+            log_lines.append(f"[DEBUG] is_dir={input_p_check.is_dir()} | is_file={input_p_check.is_file()} | exists={input_p_check.exists()}")
             flush_logs()
 
-            # Handle input: If this is the FIRST node and its input path points to a ZIP file, extract it.
-            # Containers typically expect INPUT_PATH to be a directory they can read from.
-            current_input = node.input_path
+            # The input path might be relative or differently resolved; ensure we have an absolute Path
+            input_p = pathlib.Path(node.input_path).resolve()
             
-            if idx == 0 and current_input.lower().endswith(".zip"):
-                extract_dir = run_input_base / "initial_input_extracted"
-                extract_dir.mkdir(parents=True, exist_ok=True)
-                log_lines.append(f"[worker] Extracting input ZIP: {current_input}")
-                try:
-                    with zipfile.ZipFile(current_input, 'r') as zip_ref:
-                        zip_ref.extractall(extract_dir)
-                    node.input_path = str(extract_dir)
-                except Exception as e:
-                    log_lines.append(f"[ERROR] Failed to extract input ZIP: {e}")
+            # tasks.py — replace the idx == 0 block with this cleaner version
+            if idx == 0:
+                if input_p.is_dir():
+                    # ✅ Already a directory — this is now always the case for node 0
+                    log_lines.append(f"[worker] Using upload directory as input: {node.input_path}")
+                elif input_p.is_file():
+                    # Fallback: single file was passed — wrap it (keeps backward compat)
+                    if input_p.suffix.lower() == ".zip":
+                        extract_dir = run_input_base / "extracted"
+                        extract_dir.mkdir(parents=True, exist_ok=True)
+                        with zipfile.ZipFile(str(input_p), 'r') as zip_ref:
+                            zip_ref.extractall(extract_dir)
+                        node.input_path = str(extract_dir)
+                    else:
+                        wrapper_dir = run_input_base / "initial_input"
+                        wrapper_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(input_p), str(wrapper_dir / input_p.name))
+                        node.input_path = str(wrapper_dir)
+                else:
+                    log_lines.append(f"[ERROR] Input path does not exist: {node.input_path}")
                     flush_logs()
-                    raise
-            elif idx == 0 and os.path.isfile(current_input):
-                 # If it's a single file and not a ZIP, move it to a dir so $INPUT_PATH (the dir) works
-                 file_input_dir = run_input_base / "initial_input_file_dir"
-                 file_input_dir.mkdir(parents=True, exist_ok=True)
-                 shutil.copy(current_input, file_input_dir)
-                 node.input_path = str(file_input_dir)
+                    raise FileNotFoundError(f"Input not found: {node.input_path}")
 
             success = _run_node(docker_client, node, task_id, log_lines)
             flush_logs()

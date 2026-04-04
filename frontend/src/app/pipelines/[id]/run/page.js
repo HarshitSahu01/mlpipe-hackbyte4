@@ -40,6 +40,8 @@ export default async function RunPipelinePage({ params }) {
   const serializeModel = (m) => ({
     ...m,
     _id: m._id.toString(),
+    ownerId: m.ownerId?.toString() ?? "",
+    createdAt: m.createdAt?.toISOString() ?? null,
   });
 
   return (

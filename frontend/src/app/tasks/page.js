@@ -36,7 +36,10 @@ export default async function TasksPage({ searchParams }) {
     _id: t._id.toString(),
     userId: t.userId.toString(),
     pipelineId: t.pipelineId
-      ? { ...t.pipelineId, _id: t.pipelineId._id.toString() }
+      ? { _id: t.pipelineId._id.toString(), name: t.pipelineId.name }
+      : null,
+    modelId: t.modelId
+      ? { _id: t.modelId._id.toString(), name: t.modelId.name }
       : null,
     createdAt: t.createdAt?.toISOString?.() ?? null,
     updatedAt: t.updatedAt?.toISOString?.() ?? null,

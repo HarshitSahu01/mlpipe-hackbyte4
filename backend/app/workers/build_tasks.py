@@ -113,6 +113,23 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
         else:
             raise ValueError("Either zip_path or context_path must be provided.")
 
+        # Recursive case-insensitive search for Dockerfile/Dockerfile
+        found_dockerfile = None
+        for p in pathlib.Path(build_context).rglob("*"):
+            if p.is_file() and p.name.upper() == "DOCKERFILE":
+                found_dockerfile = p
+                break
+        
+        if not found_dockerfile:
+            raise FileNotFoundError(f"Dockerfile not found anywhere inside {build_context}")
+
+        # Point the build context to the directory containing the Dockerfile
+        build_context = str(found_dockerfile.parent)
+        dockerfile_name = found_dockerfile.name
+
+        log_lines.append(f"[build] Dockerfile nested at: {found_dockerfile}")
+        flush_logs()
+
         # --- Compatibility check: Rename inference.py to run.py if run.py is missing ---
         ctx_path = pathlib.Path(build_context)
         run_file = ctx_path / "run.py"
@@ -131,19 +148,8 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
             inference_file.rename(ctx_path / "run.py")
             flush_logs()
 
-        # Case-insensitive search for Dockerfile/DOCKERFILE
-        dockerfile_name = "DOCKERFILE"
-        for p in pathlib.Path(build_context).iterdir():
-            if p.name.upper() == "DOCKERFILE":
-                dockerfile_name = p.name
-                break
-        
-        dockerfile_path = pathlib.Path(build_context) / dockerfile_name
-        if not dockerfile_path.exists():
-             raise FileNotFoundError(f"Dockerfile not found in {build_context}")
-
-        log_lines.append(f"[build] Build context: {build_context}")
-        log_lines.append(f"[build] Dockerfile: {dockerfile_path.name}")
+        log_lines.append(f"[build] Final Build context: {build_context}")
+        log_lines.append(f"[build] Dockerfile: {dockerfile_name}")
         flush_logs()
 
         # --- Docker build ---
@@ -153,7 +159,7 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
 
         _, build_log_gen = docker_client.images.build(
             path=build_context,
-            dockerfile=dockerfile_path.name,
+            dockerfile=dockerfile_name,
             tag=image_tag,
             rm=True,
             decode=False, # Manually decode to avoid 'dict' object has no attribute 'decode' bug

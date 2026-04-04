@@ -1,0 +1,123 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "convert kitti to yolo format",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ultralytics/data/scripts/convert_kitti_3d.py",
+            "args": [
+                "--kitti-root",
+                "/root/autodl-tmp",
+                "--output-root",
+                "/root/autodl-tmp/converted_kitti_3dop",
+                "--split",
+                "training",
+                "--split-strategy",
+                "3dop"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "test datalaoder",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "ultralytics/data/kitti_stereo.py",
+            "args": [
+                "--root",
+                "/root/autodl-tmp/converted_kitti_3dop",
+                "--split",
+                "train"
+            ]
+        },
+        {
+            "name": "train smoke test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/root/miniconda3/bin/yolo",
+            "args": [
+                "task=stereo3ddet",
+                "data=/root/autodl-tmp/converted_kitti_3dop/dataset.yaml",
+                "model=yolo11-stereo3ddet.yaml",
+                "mode=train",
+                "epochs=200",
+                "batch=32",
+                "workers=0"
+            ],
+        },
+        {
+            "name": "validate with trained weights",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/root/miniconda3/bin/yolo",
+            "args": [
+                "task=stereo3ddet",
+                "mode=val",
+                "model=/root/ultralytics/runs/stereo3ddet/train146/weights/best.pt",
+                "data=/root/autodl-tmp/converted_kitti_3dop/dataset.yaml",
+                "imgsz=384",
+                "batch=4",
+                "workers=0",
+                "plots=True",
+                "save_json=False"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "predict single stereo pair",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/root/miniconda3/bin/yolo",
+            "args": [
+                "task=stereo3ddet",
+                "mode=predict",
+                "model=/root/ultralytics/runs/stereo3ddet/train68/weights/best.pt",
+                "source=/root/autodl-tmp/converted_kitti_3dop/images/val",
+                "imgsz=384",
+                "conf=0.25",
+                "save=True",
+                "show=False"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "predict with custom source",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/root/miniconda3/bin/yolo",
+            "args": [
+                "task=stereo3ddet",
+                "mode=predict",
+                "model=/root/ultralytics/runs/stereo3ddet/train68/weights/best.pt@",
+                "source=/root/autodl-tmp/converted_kitti_3dop/images/val/000000_left.png",
+                "imgsz=384",
+                "conf=0.25",
+                "save=True",
+                "show=False"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "test visualization",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "test_visualization.py",
+            "args": [
+                "--dataset-root",
+                "/root/autodl-tmp/converted_kitti_3dop",
+                "--output-dir",
+                "/root/autodl-tmp/converted_kitti_3dop/visualization"
+            ]
+        }
+    ]
+}

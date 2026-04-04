@@ -1,0 +1,10 @@
+[build] Starting image build for model 69d16977a515b3755dccefac
+[build] ZIP: None
+[build] Target image tag: predict-xplore/69d16977a515b3755dccefac:latest
+[build] Using pre-extracted context: D:\Projects2\PersonaAudit\hackbyte4\shared_storage\models\69d16977a515b3755dccefac\source
+
+[EXCEPTION]
+Traceback (most recent call last):
+  File "D:\Projects2\PersonaAudit\hackbyte4\backend\app\workers\build_tasks.py", line 143, in build_model_image
+    raise FileNotFoundError(f"Dockerfile not found in {build_context}")
+FileNotFoundError: Dockerfile not found in D:\Projects2\PersonaAudit\hackbyte4\shared_storage\models\69d16977a515b3755dccefac\source

@@ -7,11 +7,39 @@ import Task from "@/models/Task";
 import User from "@/models/User";
 import Sidebar from "@/components/Sidebar";
 import TaskLogs from "@/components/TaskLogs";
+import CancelTaskButton from "@/components/CancelTaskButton";
 import Link from "next/link";
 
 function StatusBadge({ status }) {
   return <span className={`badge badge-${status}`}>{status}</span>;
 }
+
+function TypeBadge({ taskType }) {
+  const isBuild = taskType === "build";
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      fontSize: "0.72rem",
+      fontWeight: 600,
+      padding: "2px 8px",
+      borderRadius: "99px",
+      background: isBuild ? "rgba(139,92,246,0.15)" : "rgba(59,130,246,0.15)",
+      color: isBuild ? "#a78bfa" : "#60a5fa",
+      border: `1px solid ${isBuild ? "rgba(139,92,246,0.3)" : "rgba(59,130,246,0.3)"}`,
+    }}>
+      {isBuild ? "🔨 build" : "⚡ inference"}
+    </span>
+  );
+}
+
+function serializeTask(task) {
+  if (!task) return null;
+  // Deep clone and convert all ObjectIds/Dates into plain JSON strings
+  return JSON.parse(JSON.stringify(task));
+}
+
 
 export default async function TaskDetailPage({ params }) {
   const cookieStore = await cookies();
@@ -32,15 +60,15 @@ export default async function TaskDetailPage({ params }) {
     User.findById(session.userId).lean(),
     Task.findOne({ _id: id, userId: session.userId })
       .populate("pipelineId", "name nodes")
+      .populate("modelId", "name dockerImage")
       .lean(),
   ]);
 
   if (!task) notFound();
 
-  // Serialize user — ObjectId and Date are not plain RSC-safe objects
-  const serializedUser = user
-    ? { _id: user._id.toString(), name: user.name ?? "", email: user.email ?? "", role: user.role ?? "", credits: user.credits ?? 0 }
-    : null;
+  // Serialize — ObjectId and Date are not plain RSC-safe objects
+  const serializedUser = user ? JSON.parse(JSON.stringify(user)) : null;
+  const serializedTask = serializeTask(task);
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
@@ -59,7 +87,12 @@ export default async function TaskDetailPage({ params }) {
                 {task._id.toString().slice(-12)}
               </code>
             </h1>
-            <StatusBadge status={task.status} />
+            <TypeBadge taskType={serializedTask.taskType} />
+            <StatusBadge status={serializedTask.status} />
+            <CancelTaskButton
+              taskId={serializedTask._id}
+              initialStatus={serializedTask.status}
+            />
           </div>
         </div>
 
@@ -73,10 +106,11 @@ export default async function TaskDetailPage({ params }) {
           }}
         >
           {[
-            { label: "Pipeline", value: task.pipelineId?.name ?? "—" },
-            { label: "Celery Task ID", value: task.celeryTaskId || "Pending" },
-            { label: "Created", value: task.createdAt ? new Date(task.createdAt).toLocaleString() : "—" },
-            { label: "Updated", value: task.updatedAt ? new Date(task.updatedAt).toLocaleString() : "—" },
+            { label: serializedTask.taskType === "build" ? "Model Build" : "Pipeline", value: serializedTask.taskType === "build" ? serializedTask.modelId?.name ?? "—" : serializedTask.pipelineId?.name ?? "—" },
+            { label: "Celery Task ID", value: serializedTask.celeryTaskId || "Pending" },
+
+            { label: "Created", value: serializedTask.createdAt ? new Date(serializedTask.createdAt).toLocaleString() : "—" },
+            { label: "Updated", value: serializedTask.updatedAt ? new Date(serializedTask.updatedAt).toLocaleString() : "—" },
           ].map((item) => (
             <div key={item.label} className="card" style={{ padding: "1rem" }}>
               <div className="label">{item.label}</div>
@@ -91,8 +125,8 @@ export default async function TaskDetailPage({ params }) {
         <div className="card">
           <h2 style={{ fontSize: "1rem", fontWeight: 600, marginBottom: "1rem" }}>Live Output</h2>
           <TaskLogs
-            taskId={task._id.toString()}
-            initialStatus={task.status}
+            taskId={serializedTask._id}
+            initialStatus={serializedTask.status}
           />
         </div>
       </main>

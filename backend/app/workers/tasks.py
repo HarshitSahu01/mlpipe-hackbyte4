@@ -160,13 +160,42 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
 
     try:
         # Nodes arrive already sorted by `order` from the Next.js trigger route.
-        # Preserve that ordering; don't re-sort (the O(n²) index-based sort was wrong).
         sorted_nodes = list(payload.nodes)
         final_output_path = ""
+
+        import zipfile
+        import shutil
+
+        # We need a place to store extracted inputs if any
+        run_input_base = SHARED_STORAGE_PATH / "runs" / task_id
+        run_input_base.mkdir(parents=True, exist_ok=True)
 
         for idx, node in enumerate(sorted_nodes):
             log_lines.append(f"\n[{idx + 1}/{len(sorted_nodes)}] Running node: {node.model_id}")
             flush_logs()
+
+            # Handle input: If this is the FIRST node and its input path points to a ZIP file, extract it.
+            # Containers typically expect INPUT_PATH to be a directory they can read from.
+            current_input = node.input_path
+            
+            if idx == 0 and current_input.lower().endswith(".zip"):
+                extract_dir = run_input_base / "initial_input_extracted"
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                log_lines.append(f"[worker] Extracting input ZIP: {current_input}")
+                try:
+                    with zipfile.ZipFile(current_input, 'r') as zip_ref:
+                        zip_ref.extractall(extract_dir)
+                    node.input_path = str(extract_dir)
+                except Exception as e:
+                    log_lines.append(f"[ERROR] Failed to extract input ZIP: {e}")
+                    flush_logs()
+                    raise
+            elif idx == 0 and os.path.isfile(current_input):
+                 # If it's a single file and not a ZIP, move it to a dir so $INPUT_PATH (the dir) works
+                 file_input_dir = run_input_base / "initial_input_file_dir"
+                 file_input_dir.mkdir(parents=True, exist_ok=True)
+                 shutil.copy(current_input, file_input_dir)
+                 node.input_path = str(file_input_dir)
 
             success = _run_node(docker_client, node, task_id, log_lines)
             flush_logs()

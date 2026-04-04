@@ -9,9 +9,21 @@ export default function ModelsClient({ models: initialModels }) {
   const [showForm, setShowForm] = useState(false);
   const router = useRouter();
 
-  function handleSuccess(newModel) {
-    setModels((prev) => [{ ...newModel, _id: newModel._id?.toString?.() ?? newModel._id }, ...prev]);
-    setShowForm(false);
+  async function handleDelete(modelId) {
+    if (!confirm("Are you sure you want to delete this model? This will also remove the Docker image and all associated build logs.")) return;
+    
+    try {
+      const res = await fetch(`/api/models/${modelId}`, { method: "DELETE" });
+      if (res.ok) {
+        setModels((prev) => prev.filter((m) => m._id !== modelId));
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete model.");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("An error occurred while deleting the model.");
+    }
   }
 
   return (
@@ -58,42 +70,77 @@ export default function ModelsClient({ models: initialModels }) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            gap: "1rem",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "1.5rem",
           }}
         >
           {models.map((m) => (
-            <div key={m._id} className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
-                <h2 style={{ fontSize: "1rem", fontWeight: 700, lineHeight: 1.3 }}>{m.name}</h2>
-                <span className={`badge badge-${m.status}`}>{m.status}</span>
+            <div key={m._id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+                  <h2 style={{ fontSize: "1rem", fontWeight: 700, lineHeight: 1.3 }}>{m.name}</h2>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <span className={`badge badge-${m.status}`}>
+                      {m.status === "building" && <span className="pulse-dot" style={{ marginRight: "4px" }} />}
+                      {m.status === "ready" ? "success" : m.status}
+                    </span>
+                  </div>
+                </div>
+
+                {m.description && (
+                  <p className="text-secondary" style={{ fontSize: "0.82rem", marginBottom: "0.75rem" }}>
+                    {m.description}
+                  </p>
+                )}
+
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem", fontFamily: "var(--font-mono)" }}>
+                  🐳 {m.dockerImage}
+                </div>
+
+                {m.ioSchema?.inputs?.length > 0 && (
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginBottom: "0.25rem" }}>
+                    <span style={{ color: "var(--text-muted)" }}>IN:</span>{" "}
+                    {m.ioSchema.inputs.map((f) => f.name).join(", ")}
+                  </div>
+                )}
+                {m.ioSchema?.outputs?.length > 0 && (
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                    <span style={{ color: "var(--text-muted)" }}>OUT:</span>{" "}
+                    {m.ioSchema.outputs.map((f) => f.name).join(", ")}
+                  </div>
+                )}
               </div>
 
-              {m.description && (
-                <p className="text-secondary" style={{ fontSize: "0.82rem", marginBottom: "0.75rem" }}>
-                  {m.description}
-                </p>
-              )}
-
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
-                🐳 {m.dockerImage}
-              </div>
-
-              {m.ioSchema?.inputs?.length > 0 && (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                  <span style={{ fontWeight: 600 }}>Inputs:</span>{" "}
-                  {m.ioSchema.inputs.map((f) => `${f.name}:${f.type}`).join(", ")}
-                </div>
-              )}
-              {m.ioSchema?.outputs?.length > 0 && (
-                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                  <span style={{ fontWeight: 600 }}>Outputs:</span>{" "}
-                  {m.ioSchema.outputs.map((f) => `${f.name}:${f.type}`).join(", ")}
-                </div>
-              )}
-
-              <div style={{ marginTop: "0.75rem", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                Registered {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
+              <div style={{ marginTop: "1.5rem", borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
+                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                    <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                      {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
+                    </span>
+                    <div style={{ display: "flex", gap: "0.75rem" }}>
+                      {m.buildTaskId && (
+                        <a
+                          href={`/tasks/${m.buildTaskId}`}
+                          style={{ fontSize: "0.7rem", color: "var(--accent-light)", textDecoration: "none" }}
+                          title="View Logs"
+                        >
+                          Logs
+                        </a>
+                      )}
+                      <button
+                        onClick={() => handleDelete(m._id)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--danger)",
+                          fontSize: "0.7rem",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                 </div>
               </div>
             </div>
           ))}

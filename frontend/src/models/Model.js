@@ -30,8 +30,16 @@ const ModelSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "ready", "error"],
+      enum: ["pending", "building", "ready", "error"],
       default: "pending",
+    },
+    buildTaskId: {
+      type: String,
+      default: "",
+    },
+    builtImage: {
+      type: String,
+      default: "",
     },
     localModelPath: {
       type: String,
@@ -51,4 +59,5 @@ const ModelSchema = new Schema(
   }
 );
 
+// Handling for schema changes in Next.js development
 export default mongoose.models.MLModel || mongoose.model("MLModel", ModelSchema);

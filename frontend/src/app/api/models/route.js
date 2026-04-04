@@ -7,6 +7,7 @@ import { requireAuth } from "@/lib/auth";
 import MLModel from "@/models/Model";
 
 const SHARED_STORAGE = path.join(process.cwd(), "..", "shared_storage");
+const FASTAPI_URL = process.env.FASTAPI_URL || "http://localhost:8000";
 
 // Files that MUST exist at the root (or inside one top-level folder) of the uploaded ZIP
 const REQUIRED_ZIP_FILES = ["run.py", "requirements.txt", "DOCKERFILE"];
@@ -169,7 +170,10 @@ export async function POST(req) {
     // Enumerate ZIP entries and check for required files
     const entries = listZipEntries(buffer);
     const missing = REQUIRED_ZIP_FILES.filter(
-      (req) => !entries.some((e) => e === req || e.endsWith("/" + req))
+      (req) => !entries.some((e) => {
+        const base = e.split("/").pop().toLowerCase();
+        return base === req.toLowerCase();
+      })
     );
 
     if (missing.length > 0) {
@@ -183,7 +187,7 @@ export async function POST(req) {
       );
     }
 
-    // ── Persist ──────────────────────────────────────────────────────────────
+    // ── Persist model record ──────────────────────────────────────────────────
     await connectDB();
 
     const model = await MLModel.create({
@@ -193,7 +197,7 @@ export async function POST(req) {
       dockerImage,
       ioSchema,
       localModelPath: "",
-      status: "pending",
+      status: "building",
     });
 
     const modelDir  = path.join(SHARED_STORAGE, "models", model._id.toString());
@@ -202,10 +206,54 @@ export async function POST(req) {
     await fs.writeFile(filePath, buffer);
 
     model.localModelPath = filePath;
-    model.status = "ready";
     await model.save();
 
-    return NextResponse.json({ model }, { status: 201 });
+    // ── Create a Build Task record ────────────────────────────────────────────
+    const TaskModel = (await import("@/models/Task")).default;
+    const buildTask = await TaskModel.create({
+      userId: session.userId,
+      modelId: model._id,
+      taskType: "build",
+      status: "queued",
+    });
+
+    // ── Dispatch build to FastAPI / Celery ────────────────────────────────────
+    const imageTag = `predict-xplore/${model._id.toString()}:latest`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/webhooks/fastapi`;
+
+    const buildPayload = {
+      task_id: buildTask._id.toString(),
+      model_id: model._id.toString(),
+      zip_path: filePath,
+      image_tag: imageTag,
+      webhook_url: webhookUrl,
+    };
+
+    const fastapiRes = await fetch(`${FASTAPI_URL}/build`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload),
+    }).catch((err) => {
+      console.error("FastAPI /build unreachable:", err.message);
+      return null;
+    });
+
+    if (fastapiRes && fastapiRes.ok) {
+      const data = await fastapiRes.json();
+      buildTask.celeryTaskId = data.celery_task_id || "";
+      buildTask.status = "running";
+    } else {
+      buildTask.status = "failed";
+      model.status = "error";
+      await model.save();
+    }
+
+    await buildTask.save();
+
+    model.buildTaskId = buildTask._id.toString();
+    await model.save();
+
+    return NextResponse.json({ model, buildTaskId: buildTask._id.toString() }, { status: 201 });
   } catch (error) {
     console.error("POST /api/models error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

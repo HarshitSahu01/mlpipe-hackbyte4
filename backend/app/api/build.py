@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.workers.build_tasks import build_model_image
 from app.workers.github_tasks import pull_from_github
+from app.workers.agent_tasks import package_with_agent
 
 router = APIRouter()
 
@@ -56,11 +57,33 @@ async def trigger_github_pull(payload: GitHubPullPayload):
         raise HTTPException(status_code=500, detail=f"Failed to queue pull task: {exc}")
 
 
+class AgentPackagePayload(BaseModel):
+    task_id: str
+    model_id: str
+    input_path: str
+    image_tag: str = ""
+    webhook_url: str = ""
+
+@router.post("/agent-package")
+async def trigger_agent_package(payload: AgentPackagePayload):
+    """
+    Trigger the AI agent packager to refactor raw code instead of pulling from Github or ZIP.
+    """
+    try:
+        celery_task = package_with_agent.apply_async(
+            args=[payload.model_dump()],
+            task_id=f"agent-{payload.task_id}",
+        )
+        return {"celery_task_id": celery_task.id, "status": "queued"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to queue agent task: {exc}")
+
+
 @router.delete("/build/{image_tag:path}")
 async def delete_image(image_tag: str):
     """
     Remove a Docker image from the local registry.
-    image_tag: The full tag (e.g. predict-xplore/id:latest)
+    image_tag: The full tag (e.g. ml-pipeline/id:latest)
     """
     import docker
     client = docker.from_env()

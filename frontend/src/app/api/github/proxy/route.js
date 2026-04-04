@@ -18,7 +18,7 @@ export async function GET(req) {
     const response = await fetch(endpoint, {
       headers: {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "Predict-Xplore-App"
+        "User-Agent": "ML Pipeline-App"
       }
     });
 

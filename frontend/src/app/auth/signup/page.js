@@ -71,7 +71,7 @@ export default function SignupPage() {
               color: "var(--accent-light)",
             }}
           >
-            Predict<span style={{ color: "var(--text-primary)" }}>-Xplore</span>
+            ML <span style={{ color: "var(--text-primary)" }}>Pipeline</span>
           </div>
           <div
             style={{

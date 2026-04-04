@@ -1,6 +1,6 @@
 [build] Starting image build for model 69d0c47a49e186630a80b13c
 [build] ZIP: D:\Projects2\PersonaAudit\hackbyte4\shared_storage\models\69d0c47a49e186630a80b13c\house_classifier.zip
-[build] Target image tag: predict-xplore/69d0c47a49e186630a80b13c:latest
+[build] Target image tag: ml-pipeline/69d0c47a49e186630a80b13c:latest
 [build] Extracting ZIP to C:\Users\prana\AppData\Local\Temp\px_build_n23ttyl2
 [build] Build context: C:\Users\prana\AppData\Local\Temp\px_build_n23ttyl2
 [build] Dockerfile: Dockerfile
@@ -48,6 +48,6 @@ Step 7/7 : CMD ["python", "run.py"]
  ---> Removed intermediate container e218ba3ac980
  ---> f02c3b45e966
 Successfully built f02c3b45e966
-Successfully tagged predict-xplore/69d0c47a49e186630a80b13c:latest
+Successfully tagged ml-pipeline/69d0c47a49e186630a80b13c:latest
 
-[build] ✅ Image built successfully: predict-xplore/69d0c47a49e186630a80b13c:latest
+[build] ✅ Image built successfully: ml-pipeline/69d0c47a49e186630a80b13c:latest

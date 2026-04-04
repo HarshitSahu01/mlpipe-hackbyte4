@@ -91,7 +91,7 @@ export default async function LandingPage() {
             margin: "0 auto 2.5rem",
           }}
         >
-          Predict-Xplore lets you register any Docker-based ML model, chain them into
+          ML Pipeline lets you register any Docker-based ML model, chain them into
           pipelines, and trigger inference — all from one clean UI backed by Celery workers.
         </p>
 

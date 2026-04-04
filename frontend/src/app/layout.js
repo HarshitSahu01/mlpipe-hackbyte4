@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Predict-Xplore — Agnostic ML Inference SaaS",
+  title: "ML Pipeline — Agnostic ML Inference SaaS",
   description:
     "Build and run ML inference pipelines on any model, powered by Docker containers and a BFF architecture.",
 };

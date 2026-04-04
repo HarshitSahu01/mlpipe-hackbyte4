@@ -2,8 +2,52 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 2000;
 const TERMINAL_STATUSES = new Set(["completed", "failed"]);
+
+function renderLogs(raw) {
+  if (!raw || raw === "Loading logs…") return raw;
+  const lines = raw.split("\n");
+  return lines.map((line, i) => {
+    // Section box-drawing headers
+    if (line.startsWith("┌") || line.startsWith("└")) {
+      return (
+        <div key={i} style={{ color: "#7c3aed", fontWeight: 600, marginTop: i > 0 ? "0.75rem" : 0 }}>
+          {line}
+        </div>
+      );
+    }
+    if (line.startsWith("│")) {
+      return (
+        <div key={i} style={{ color: "#a78bfa", fontWeight: 600 }}>
+          {line}
+        </div>
+      );
+    }
+    // Success
+    if (line.includes("✅")) {
+      return <div key={i} style={{ color: "#22c55e" }}>{line}</div>;
+    }
+    // Error
+    if (line.includes("❌") || line.startsWith("Traceback") || line.includes("Error:") || line.includes("[ERROR]")) {
+      return <div key={i} style={{ color: "#f87171" }}>{line}</div>;
+    }
+    // Warning
+    if (line.includes("⚠️") || line.startsWith("WARNING")) {
+      return <div key={i} style={{ color: "#fbbf24" }}>{line}</div>;
+    }
+    // uv / perf lines
+    if (line.includes("[uv]") || line.includes("⚡")) {
+      return <div key={i} style={{ color: "#38bdf8" }}>{line}</div>;
+    }
+    // Docker build step lines (Step N/M)
+    if (/^Step \d+\/\d+/i.test(line)) {
+      return <div key={i} style={{ color: "#e2e8f0", fontWeight: 600 }}>{line}</div>;
+    }
+    // Timestamps / regular lines
+    return <div key={i} style={{ color: "var(--text-secondary)" }}>{line || "\u00A0"}</div>;
+  });
+}
 
 export default function TaskLogs({ taskId, initialStatus }) {
   const [task, setTask] = useState(null);
@@ -182,9 +226,9 @@ export default function TaskLogs({ taskId, initialStatus }) {
         <div
           className="log-panel"
           ref={logRef}
-          style={{ height: "400px", fontSize: "0.82rem" }}
+          style={{ height: "480px", fontSize: "0.8rem", lineHeight: "1.65" }}
         >
-          {logs}
+          {renderLogs(logs)}
         </div>
       </div>
 

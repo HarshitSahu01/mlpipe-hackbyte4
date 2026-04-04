@@ -3,7 +3,7 @@ version: "3.9"
 services:
   redis:
     image: "redis:7-alpine"
-    container_name: predictxplore_redis
+    container_name: mlpipeline_redis
     ports:
       - "6379:6379"
     volumes:
@@ -17,13 +17,13 @@ services:
 
   mongo:
     image: "mongo:7"
-    container_name: predictxplore_mongo
+    container_name: mlpipeline_mongo
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: predictxplore
+      MONGO_INITDB_DATABASE: mlpipeline
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s

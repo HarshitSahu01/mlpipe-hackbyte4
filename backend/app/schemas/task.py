@@ -5,11 +5,14 @@ from typing import List
 
 
 class NodeSpec(BaseModel):
+    id: str  # The unique node ID from the frontend DAG (e.g., "node_0")
     model_id: str
     docker_image: str = Field(default="python:3.10-slim")
     model_path: str = Field(default="")
     input_path: str
     output_path: str
+    depends_on: List[str] = Field(default_factory=list)
+    next_nodes: List[str] = Field(default_factory=list)
 
 
 class TriggerPayload(BaseModel):

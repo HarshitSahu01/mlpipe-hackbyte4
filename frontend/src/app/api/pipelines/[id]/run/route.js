@@ -68,40 +68,42 @@ export async function POST(req, { params }) {
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.writeFile(inputPath, buffer);
 
-    // 5. Construct TriggerPayload for sequential execution
+    // 5. Construct TriggerPayload for DAG execution
     const nodes = [];
-    const sortedNodes = [...pipeline.nodes].sort((a, b) => a.order - b.order);
 
-    for (let i = 0; i < sortedNodes.length; i++) {
-      const nodeDef = sortedNodes[i];
+    for (let i = 0; i < pipeline.nodes.length; i++) {
+      const nodeDef = pipeline.nodes[i];
       const model = modelsMap.get(nodeDef.modelId.toString());
 
-      // ✅ node 0 input: the upload DIRECTORY (not the file path)
-      // ✅ node i>0 input: previous node's output FILE
-      const inputPath =
-        i === 0
-          ? uploadDir // directory → regressor does os.listdir()
-          : path.join(
-              SHARED_STORAGE,
-              "outputs",
-              taskId,
-              `node_${i - 1}_output.json`,
-            ); // file → classifier reads JSON
+      // Provide backwards compatibility for older sequential pipelines
+      const nodeId = nodeDef.id || `node_${i}`;
+      const dependsOn = nodeDef.dependsOn || (i > 0 && !nodeDef.id ? [`node_${i - 1}`] : []);
+      const nextNodes = nodeDef.nextNodes || (i < pipeline.nodes.length - 1 && !nodeDef.id ? [`node_${i + 1}`] : []);
 
-      // ✅ output is always a FILE path, not a directory
+      const isRoot = dependsOn.length === 0;
+
+      // Root nodes read from uploadDir. Dependent nodes will have their inputs staged by the worker.
+      const inputPath = isRoot
+        ? uploadDir
+        : path.join(SHARED_STORAGE, "runs", taskId, `${nodeId}_inputs`);
+
+      // Each node outputs to a dedicated folder.
       const outputPath = path.join(
         SHARED_STORAGE,
         "outputs",
         taskId,
-        `node_${i}_output.json`,
+        `${nodeId}_output`
       );
 
       nodes.push({
+        id: nodeId,
         model_id: model._id.toString(),
         docker_image: model.builtImage || model.dockerImage,
         model_path: model.localModelPath || "",
         input_path: inputPath,
         output_path: outputPath,
+        depends_on: dependsOn,
+        next_nodes: nextNodes,
       });
     }
 

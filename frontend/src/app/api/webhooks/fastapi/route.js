@@ -93,6 +93,7 @@ export async function POST(req) {
     if (docker_image) taskUpdate.buildImage = docker_image;
 
     const task = await Task.findByIdAndUpdate(task_id, taskUpdate, { new: true });
+    console.log("task : ", task)
 
     if (!task) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });

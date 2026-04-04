@@ -162,66 +162,133 @@ def run_inference_pipeline(self: Task, payload_dict: Dict[str, Any]) -> Dict[str
     docker_client = docker.from_env()
 
     try:
-        # Nodes arrive already sorted by `order` from the Next.js trigger route.
-        sorted_nodes = list(payload.nodes)
-        final_output_path = ""
-
         import zipfile
         import shutil
+        import concurrent.futures
+        import threading
 
         # Ensure base directories exist on host
         run_input_base = SHARED_STORAGE_PATH / "runs" / task_id
         run_input_base.mkdir(parents=True, exist_ok=True)
 
-        for idx, node in enumerate(sorted_nodes):
-            log_lines.append(f"\n[{idx + 1}/{len(sorted_nodes)}] Running node: {node.model_id}")
-            
-            log_lines.append(f"[DEBUG] Raw node.input_path from payload: {node.input_path}")
-            input_p_check = pathlib.Path(node.input_path).resolve()
-            log_lines.append(f"[DEBUG] Resolved: {input_p_check}")
-            log_lines.append(f"[DEBUG] is_dir={input_p_check.is_dir()} | is_file={input_p_check.is_file()} | exists={input_p_check.exists()}")
-            flush_logs()
+        nodes_map = {node.id: node for node in payload.nodes}
+        
+        # 1. Build dependency graph
+        in_degree = {nid: 0 for nid in nodes_map}
+        for node in payload.nodes:
+            for nxt in node.next_nodes:
+                if nxt in in_degree:
+                    in_degree[nxt] += 1
 
-            # The input path might be relative or differently resolved; ensure we have an absolute Path
-            input_p = pathlib.Path(node.input_path).resolve()
-            
-            # tasks.py — replace the idx == 0 block with this cleaner version
-            if idx == 0:
-                if input_p.is_dir():
-                    # ✅ Already a directory — this is now always the case for node 0
-                    log_lines.append(f"[worker] Using upload directory as input: {node.input_path}")
-                elif input_p.is_file():
-                    # Fallback: single file was passed — wrap it (keeps backward compat)
-                    if input_p.suffix.lower() == ".zip":
-                        extract_dir = run_input_base / "extracted"
-                        extract_dir.mkdir(parents=True, exist_ok=True)
-                        with zipfile.ZipFile(str(input_p), 'r') as zip_ref:
-                            zip_ref.extractall(extract_dir)
-                        node.input_path = str(extract_dir)
-                    else:
-                        wrapper_dir = run_input_base / "initial_input"
-                        wrapper_dir.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(str(input_p), str(wrapper_dir / input_p.name))
-                        node.input_path = str(wrapper_dir)
-                else:
-                    log_lines.append(f"[ERROR] Input path does not exist: {node.input_path}")
-                    flush_logs()
-                    raise FileNotFoundError(f"Input not found: {node.input_path}")
-
-            success = _run_node(docker_client, node, task_id, log_lines)
-            flush_logs()
-
-            if not success:
-                error_msg = f"Node {node.model_id} failed (non-zero exit code)"
-                log_lines.append(f"[ERROR] {error_msg}")
+        ready_queue = [nid for nid, deg in in_degree.items() if deg == 0]
+        completed_nodes = set()
+        failed_nodes = set()
+        
+        log_lock = threading.Lock()
+        
+        def safe_log(msg: str):
+            with log_lock:
+                log_lines.append(msg)
                 flush_logs()
-                _send_webhook(task_id, "failed", logs_path=logs_path, error=error_msg, webhook_url=webhook_url)
-                return {"status": "failed", "error": error_msg}
 
-            final_output_path = node.output_path
+        def execute_node(node: NodeSpec) -> bool:
+            safe_log(f"\n[worker] Starting node: {node.id} (Model: {node.model_id})")
+            local_logs = []
+            
+            try:
+                input_p = pathlib.Path(node.input_path).resolve()
 
-        log_lines.append("\n✓ All nodes completed successfully.")
-        flush_logs()
+                # If it's a dependent node, we must gather outputs from its dependencies
+                if node.depends_on:
+                    input_p.mkdir(parents=True, exist_ok=True)
+                    for dep_id in node.depends_on:
+                        if dep_id in nodes_map:
+                            dep_out = pathlib.Path(nodes_map[dep_id].output_path).resolve()
+                            if dep_out.exists() and dep_out.is_dir():
+                                # Copy everything from dep_out into this node's input dir
+                                for child in dep_out.iterdir():
+                                    if child.is_file():
+                                        shutil.copy2(str(child), str(input_p / child.name))
+                                    elif child.is_dir():
+                                        shutil.copytree(str(child), str(input_p / child.name), dirs_exist_ok=True)
+                
+                # If root node, check inputs and handle zip extracts
+                else:
+                    if input_p.is_dir():
+                        local_logs.append(f"[worker] Using upload directory as input: {node.input_path}")
+                    elif input_p.is_file():
+                        if input_p.suffix.lower() == ".zip":
+                            extract_dir = run_input_base / f"{node.id}_extracted"
+                            extract_dir.mkdir(parents=True, exist_ok=True)
+                            with zipfile.ZipFile(str(input_p), 'r') as zip_ref:
+                                zip_ref.extractall(extract_dir)
+                            node.input_path = str(extract_dir)
+                        else:
+                            wrapper_dir = run_input_base / f"{node.id}_initial_input"
+                            wrapper_dir.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(str(input_p), str(wrapper_dir / input_p.name))
+                            node.input_path = str(wrapper_dir)
+                    else:
+                        local_logs.append(f"[ERROR] Input path does not exist: {node.input_path}")
+                        raise FileNotFoundError(f"Input not found: {node.input_path}")
+
+                success = _run_node(docker_client, node, task_id, local_logs)
+            except Exception as e:
+                local_logs.append(f"[EXCEPTION executing {node.id}]: {str(e)}")
+                local_logs.append(traceback.format_exc())
+                success = False
+
+            # Commit logs safely
+            with log_lock:
+                log_lines.extend(local_logs)
+                if not success:
+                    log_lines.append(f"[ERROR] Node {node.id} failed.")
+                flush_logs()
+                
+            return success
+
+        # 2. DAG Execution Loop
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {} # Future -> node_id
+            
+            for nid in ready_queue:
+                futures[executor.submit(execute_node, nodes_map[nid])] = nid
+                
+            while futures:
+                done, not_done = concurrent.futures.wait(
+                    futures.keys(), return_when=concurrent.futures.FIRST_COMPLETED
+                )
+                
+                for fut in done:
+                    nid = futures.pop(fut)
+                    try:
+                        success = fut.result()
+                        if success:
+                            completed_nodes.add(nid)
+                            for nxt in nodes_map[nid].next_nodes:
+                                if nxt in in_degree:
+                                    in_degree[nxt] -= 1
+                                    if in_degree[nxt] == 0:
+                                        futures[executor.submit(execute_node, nodes_map[nxt])] = nxt
+                        else:
+                            failed_nodes.add(nid)
+                    except Exception as e:
+                        safe_log(f"[EXCEPTION in DAG execution {nid}] {traceback.format_exc()}")
+                        failed_nodes.add(nid)
+                        
+                if failed_nodes:
+                    break # Abort pipeline if any node fails
+
+        if failed_nodes:
+            error_msg = f"Pipeline failed at nodes: {', '.join(failed_nodes)}"
+            _send_webhook(task_id, "failed", logs_path=logs_path, error=error_msg, webhook_url=webhook_url)
+            return {"status": "failed", "error": error_msg}
+
+        # 3. Completion logic
+        terminal_nodes = [n.id for n in payload.nodes if not n.next_nodes]
+        final_output_path = nodes_map[terminal_nodes[0]].output_path if terminal_nodes else ""
+
+        safe_log("\n✓ All nodes completed successfully.")
 
         _send_webhook(
             task_id,

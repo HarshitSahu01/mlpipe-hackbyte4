@@ -4,15 +4,27 @@ const { Schema } = mongoose;
 
 const PipelineNodeSchema = new Schema(
   {
+    id: {
+      type: String,
+      required: true, 
+    },
+
     modelId: {
       type: Schema.Types.ObjectId,
       ref: "MLModel",
       required: true,
     },
-    order: {
-      type: Number,
-      required: true,
+
+    dependsOn: {
+      type: [String], 
+      default: [],
     },
+
+    nextNodes: {
+      type: [String], 
+      default: [],
+    },
+
     inputMappings: {
       type: Map,
       of: String,

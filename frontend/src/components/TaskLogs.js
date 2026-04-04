@@ -152,16 +152,6 @@ export default function TaskLogs({ taskId, initialStatus }) {
             </span>
           )}
         </div>
-
-        {status === "completed" && resultsPath && (
-          <a
-            href={`/api/tasks/${taskId}/results`}
-            className="btn btn-primary"
-            style={{ fontSize: "0.85rem", padding: "0.5rem 1rem" }}
-          >
-            ⬇ Download All Results
-          </a>
-        )}
       </div>
 
       {/* Log panel */}

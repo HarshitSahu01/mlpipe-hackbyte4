@@ -56,11 +56,11 @@ def extract_primary_script(input_path: str) -> str:
             raise ValueError("No .py files found in the directory.")
         return py_files[0].read_text(encoding="utf-8")
 
-def convert_to_predict_xplore(raw_code_string: str) -> dict:
+def convert_to_ml_pipeline(raw_code_string: str) -> dict:
     armoriq = init_armoriq()
     
     plan = {
-        "goal": "Convert raw inference code to Predict-Xplore container format",
+        "goal": "Convert raw inference code to ML Pipeline container format",
         "steps": [
             {
                 "action": "refactor_code_and_generate_artifacts",
@@ -71,13 +71,21 @@ def convert_to_predict_xplore(raw_code_string: str) -> dict:
     }
 
     system_prompt = """
-You are an expert MLOps agent. Refactor the provided user code to meet the Predict-Xplore standard.
+You are an expert MLOps agent. Refactor the provided user code to meet the ML Pipeline standard.
 
 STRICT RULES:
 1. Refactor all data ingestion (e.g., pandas read_csv, sys.stdin, argparse) to read from a JSON file located at os.environ.get("INPUT_PATH").
 2. Refactor all data output (e.g., print, to_csv) to write a JSON file to os.environ.get("OUTPUT_PATH").
 3. Generate a complete requirements.txt by analyzing the imports in the user's code.
-4. Generate a DOCKERFILE using `python:3.10-slim` that copies files, installs dependencies, and sets CMD ["python", "run.py"].
+4. Generate a DOCKERFILE using `python:3.10-slim` that installs `uv` first, then uses `uv pip install --system -r requirements.txt` for fast dependency installation, copies files, and sets CMD ["python", "run.py"].
+   The DOCKERFILE must follow this exact structure:
+   FROM python:3.10-slim
+   RUN pip install uv
+   WORKDIR /app
+   COPY requirements.txt .
+   RUN uv pip install --system -r requirements.txt
+   COPY . .
+   CMD ["python", "run.py"]
 5. Do not include markdown formatting blocks in the json values.
 
 Output your response STRICTLY as a JSON object with exactly three keys: "run_py", "requirements_txt", "dockerfile". 
@@ -88,7 +96,7 @@ Output your response STRICTLY as a JSON object with exactly three keys: "run_py"
             # Capture plan
             plan_capture = armoriq.capture_plan(
                 llm="gpt-5.4-mini",
-                prompt="Refactoring user code for Predict-Xplore",
+                prompt="Refactoring user code for ML Pipeline",
                 plan=plan
             )
             # You could check an intent_token here if strict
@@ -146,7 +154,7 @@ def process_upload(input_path: str, output_dir: str):
     raw_code = extract_primary_script(input_path)
     
     print(f"[Packager] Refactoring code {len(raw_code)} bytes via AI ...")
-    artifacts = convert_to_predict_xplore(raw_code)
+    artifacts = convert_to_ml_pipeline(raw_code)
     
     print(f"[Packager] Packaging to {output_dir} ...")
     package_artifacts(artifacts, output_dir)

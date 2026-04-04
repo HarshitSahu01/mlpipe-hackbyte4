@@ -238,7 +238,7 @@ export async function POST(req) {
     });
 
     // ── Dispatch build to FastAPI / Celery ────────────────────────────────────
-    const imageTag = `predict-xplore/${model._id.toString()}:latest`;
+    const imageTag = `ml-pipeline/${model._id.toString()}:latest`;
     const webhookUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/webhooks/fastapi`;
 
     let endpoint = "/build";

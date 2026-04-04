@@ -6,9 +6,9 @@ const options = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Predict-Xplore API",
+      title: "ML Pipeline API",
       version: "1.0.0",
-      description: "API docs for Predict-Xplore — Agnostic ML Inference SaaS",
+      description: "API docs for ML Pipeline — Agnostic ML Inference SaaS",
     },
     components: {
       securitySchemes: {

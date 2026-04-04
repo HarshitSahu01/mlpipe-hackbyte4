@@ -2,17 +2,22 @@
 """
 Celery task: build_model_image
 
-Given a model ID and a ZIP file path containing a Dockerfile:
-1. Unzips the package into a temp directory
-2. Runs `docker build` on it, streaming logs line-by-line to a logs.txt file
-3. Tags the resulting image as predict-xplore/<model_id>:latest
-4. POSTs a webhook back to Next.js with status + logs_path
+Given a model ID and a ZIP file path (or pre-extracted context dir):
+1. Unzips the package if needed
+2. Patches the Dockerfile to use uv for fast installs
+3. Runs `docker build`, streaming every log line to the shared task log
+4. Tags the resulting image as ml-pipeline/<model_id>:latest
+5. POSTs a webhook back to Next.js with status + logs_path
+
+All log output appends to the SAME file used by upstream tasks
+(github_tasks, agent_tasks) so the frontend sees one unified stream.
 """
 from __future__ import annotations
 
 import json
 import os
 import pathlib
+import re
 import shutil
 import tempfile
 import traceback
@@ -25,6 +30,7 @@ from celery import Task
 from dotenv import load_dotenv
 
 from app.core.celery_app import celery_app
+from app.workers.log_helpers import TaskLogger
 
 load_dotenv()
 
@@ -60,52 +66,93 @@ def _send_build_webhook(
         print(f"[webhook] Failed to notify Next.js: {exc}")
 
 
+def _patch_dockerfile_for_uv(dockerfile_path: pathlib.Path, logger: TaskLogger) -> None:
+    """
+    Transparently patches a Dockerfile to use `uv` for pip installs.
+    - If `uv` is already present, it's a no-op.
+    - Injects `RUN pip install uv` after the first FROM line.
+    - Replaces `pip install` with `uv pip install --system` in all RUN commands.
+    """
+    content = dockerfile_path.read_text(encoding="utf-8")
+
+    # No-op if already using uv
+    if "uv pip install" in content or "pip install uv" in content:
+        logger.info("[uv] Dockerfile already uses uv — skipping patch")
+        return
+
+    lines = content.splitlines()
+    patched = []
+    uv_injected = False
+
+    for line in lines:
+        if line.strip().upper().startswith("FROM ") and not uv_injected:
+            patched.append(line)
+            patched.append("RUN pip install uv")
+            uv_injected = True
+            continue
+        patched.append(re.sub(r"\bpip3?\s+install\b", "uv pip install --system", line))
+
+    new_content = "\n".join(patched) + "\n"
+    if new_content != content:
+        dockerfile_path.write_text(new_content, encoding="utf-8")
+        logger.success("[uv] Dockerfile patched: pip → uv pip install --system ⚡")
+
+
 @celery_app.task(bind=True, name="build_model_image", max_retries=0)
 def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Accepts:
       - task_id:     str  (MongoDB Task _id)
       - model_id:    str  (MongoDB MLModel _id)
-      - zip_path:    str  (absolute host path to uploaded ZIP)
-      - image_tag:   str  (e.g. predict-xplore/<model_id>:latest)
+      - zip_path:    str  (absolute host path to uploaded ZIP)  [optional]
+      - context_path: str (pre-extracted directory)            [optional]
+      - logs_path:   str  (if set, APPENDS to this shared log rather than creating new)
+      - image_tag:   str  (e.g. ml-pipeline/<model_id>:latest)
       - webhook_url: str  (optional override)
     """
-    task_id = payload_dict["task_id"]
-    model_id = payload_dict["model_id"]
-    zip_path = payload_dict.get("zip_path")
+    task_id    = payload_dict["task_id"]
+    model_id   = payload_dict["model_id"]
+    zip_path   = payload_dict.get("zip_path")
     context_path = payload_dict.get("context_path")
-    image_tag = payload_dict.get("image_tag", f"predict-xplore/{model_id}:latest")
+    image_tag  = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
     webhook_url = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
 
-    # --- Prepare log file ---
-    task_output_dir = SHARED_STORAGE_PATH / "build_logs" / task_id
-    task_output_dir.mkdir(parents=True, exist_ok=True)
-    logs_path = str(task_output_dir / "build_logs.txt")
+    # --- Unified log file ---
+    # If an upstream task (github/agent) already created a log, use it (append mode).
+    # Otherwise create a fresh one.
+    existing_logs_path = payload_dict.get("logs_path")
+    if existing_logs_path:
+        logger = TaskLogger.__new__(TaskLogger)
+        logger.logs_path = pathlib.Path(existing_logs_path)
+        logger.logs_path.parent.mkdir(parents=True, exist_ok=True)
+        # Don't truncate — just append from here on
+    else:
+        task_output_dir = SHARED_STORAGE_PATH / "build_logs" / task_id
+        task_output_dir.mkdir(parents=True, exist_ok=True)
+        logger = TaskLogger(task_output_dir / "build_logs.txt")
 
-    log_lines = [f"[build] Starting image build for model {model_id}",
-                 f"[build] ZIP: {zip_path}",
-                 f"[build] Target image tag: {image_tag}"]
+    logs_path = logger.path
 
-    def flush_logs():
-        pathlib.Path(logs_path).write_text("\n".join(log_lines), encoding="utf-8")
+    logger.section("🐳  Docker Build Phase")
+    logger.info(f"Model: {model_id}")
+    logger.info(f"Image tag: {image_tag}")
+    if zip_path:
+        logger.info(f"ZIP: {zip_path}")
 
-    flush_logs()
     _send_build_webhook(task_id, "running", model_id=model_id, logs_path=logs_path, webhook_url=webhook_url)
 
     tmp_dir = None
     try:
         if context_path:
-            log_lines.append(f"[build] Using pre-extracted context: {context_path}")
+            logger.info(f"Using pre-extracted context: {context_path}")
             build_context = context_path
         elif zip_path:
-            tmp_dir = tempfile.mkdtemp(prefix="px_build_")
-            log_lines.append(f"[build] Extracting ZIP to {tmp_dir}")
-            flush_logs()
+            tmp_dir = tempfile.mkdtemp(prefix="mlp_build_")
+            logger.info(f"Extracting ZIP to {tmp_dir}")
 
             with zipfile.ZipFile(zip_path, "r") as zf:
                 zf.extractall(tmp_dir)
 
-            # Detect if files were wrapped in a single subdirectory
             entries = list(pathlib.Path(tmp_dir).iterdir())
             build_context = tmp_dir
             if len(entries) == 1 and entries[0].is_dir():
@@ -113,12 +160,10 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
         else:
             raise ValueError("Either zip_path or context_path must be provided.")
 
-        # --- Compatibility check: Rename inference.py to run.py if run.py is missing ---
+        # --- Compatibility: Rename inference.py → run.py ---
         ctx_path = pathlib.Path(build_context)
         run_file = ctx_path / "run.py"
         inference_file = None
-        
-        # Look for run.py or inference.py case-insensitively
         for p in ctx_path.iterdir():
             if p.name.lower() == "run.py":
                 run_file = p
@@ -127,45 +172,46 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
                 inference_file = p
 
         if not run_file.exists() and inference_file and inference_file.exists():
-            log_lines.append(f"[build] Renaming {inference_file.name} to run.py for standard compatibility")
+            logger.info(f"Renaming {inference_file.name} → run.py for standard compatibility")
             inference_file.rename(ctx_path / "run.py")
-            flush_logs()
 
-        # Case-insensitive search for Dockerfile/DOCKERFILE
+        # --- Find Dockerfile ---
         dockerfile_name = "DOCKERFILE"
         for p in pathlib.Path(build_context).iterdir():
             if p.name.upper() == "DOCKERFILE":
                 dockerfile_name = p.name
                 break
-        
+
         dockerfile_path = pathlib.Path(build_context) / dockerfile_name
         if not dockerfile_path.exists():
-             raise FileNotFoundError(f"Dockerfile not found in {build_context}")
+            raise FileNotFoundError(f"Dockerfile not found in {build_context}")
 
-        log_lines.append(f"[build] Build context: {build_context}")
-        log_lines.append(f"[build] Dockerfile: {dockerfile_path.name}")
-        flush_logs()
+        # --- Patch Dockerfile to use uv ---
+        logger.section("⚡  uv Performance Patch")
+        _patch_dockerfile_for_uv(dockerfile_path, logger)
+
+        logger.info(f"Build context: {build_context}")
+        logger.info(f"Dockerfile: {dockerfile_path.name}")
 
         # --- Docker build ---
+        logger.section("🔨  Docker Build Logs")
         docker_client = docker.from_env()
-        log_lines.append("[build] Running docker build ...")
-        flush_logs()
+        logger.info("Running docker build ...")
 
         _, build_log_gen = docker_client.images.build(
             path=build_context,
             dockerfile=dockerfile_path.name,
             tag=image_tag,
             rm=True,
-            decode=False, # Manually decode to avoid 'dict' object has no attribute 'decode' bug
+            decode=False,
         )
 
         for line in build_log_gen:
-            # Polymorphic handling for SDK inconsistencies:
-            # Sometimes it yields bytes, sometimes dict even with decode=False
             chunks = []
             if isinstance(line, bytes):
-                for prt in line.decode('utf-8').split('\r\n'):
-                    if not prt.strip(): continue
+                for prt in line.decode("utf-8").split("\r\n"):
+                    if not prt.strip():
+                        continue
                     try:
                         chunks.append(json.loads(prt))
                     except json.JSONDecodeError:
@@ -174,29 +220,25 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
                 chunks = [line]
 
             for chunk in chunks:
-                if not isinstance(chunk, dict): continue
-                
+                if not isinstance(chunk, dict):
+                    continue
                 if "stream" in chunk:
                     s = chunk["stream"].rstrip("\n")
                     if s:
-                        log_lines.append(s)
-                        flush_logs()
+                        logger.raw(s)
                         print(f"[docker-build] {s}")
                 elif "error" in chunk:
-                    error_detail = chunk["error"]
-                    log_lines.append(f"[ERROR] {error_detail}")
-                    flush_logs()
-                    raise RuntimeError(error_detail)
+                    err = chunk["error"]
+                    logger.error(err)
+                    raise RuntimeError(err)
                 elif "status" in chunk:
-                    log_lines.append(chunk["status"])
-                    flush_logs()
+                    logger.raw(chunk["status"])
 
-        log_lines.append(f"\n[build] ✅ Image built successfully: {image_tag}")
-        flush_logs()
+        logger.section("🎉  Build Complete")
+        logger.success(f"Image built: {image_tag}")
 
         _send_build_webhook(
-            task_id,
-            "completed",
+            task_id, "completed",
             model_id=model_id,
             docker_image=image_tag,
             logs_path=logs_path,
@@ -205,12 +247,9 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
         return {"status": "completed", "image_tag": image_tag}
 
     except Exception as exc:
-        error_msg = traceback.format_exc()
-        log_lines.append(f"\n[EXCEPTION]\n{error_msg}")
-        flush_logs()
+        logger.error(traceback.format_exc())
         _send_build_webhook(
-            task_id,
-            "failed",
+            task_id, "failed",
             model_id=model_id,
             logs_path=logs_path,
             error=str(exc),

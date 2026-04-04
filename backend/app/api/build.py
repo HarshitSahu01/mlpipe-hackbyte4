@@ -83,7 +83,7 @@ async def trigger_agent_package(payload: AgentPackagePayload):
 async def delete_image(image_tag: str):
     """
     Remove a Docker image from the local registry.
-    image_tag: The full tag (e.g. predict-xplore/id:latest)
+    image_tag: The full tag (e.g. ml-pipeline/id:latest)
     """
     import docker
     client = docker.from_env()

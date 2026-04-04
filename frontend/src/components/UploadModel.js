@@ -435,7 +435,7 @@ export default function UploadModel({ onSuccess }) {
                 }}
               />
               <label htmlFor="use-ai" style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                Use AI Packager (Auto-restructure code to Predict-Xplore format)
+                Use AI Packager (Auto-restructure code to ML Pipeline format)
               </label>
             </div>
 

@@ -9,7 +9,7 @@ Environment variables injected by the worker:
   INPUT_PATH   — absolute path to a JSON file with input data
   OUTPUT_PATH  — absolute path where you must write prediction JSON
   MODEL_PATH   — path to this model's ZIP (extract from here if needed)
-  TASK_ID      — the Predict-Xplore task ID
+  TASK_ID      — the ML Pipeline task ID
   MODEL_ID     — the MongoDB model ID
 
 Expected INPUT format (JSON):

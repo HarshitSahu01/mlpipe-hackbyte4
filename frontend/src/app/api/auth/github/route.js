@@ -58,8 +58,6 @@ export async function POST(req) {
 
     const response = NextResponse.json({ message: "GitHub login success" });
 
-    console.log("response of google is: ", response);
-
     response.cookies.set("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

@@ -21,8 +21,8 @@ async def trigger_build(payload: BuildPayload):
     Dispatches a Celery build task and returns the Celery task ID immediately.
     """
     try:
-        print(payload.model_dump())
-        print(f"build-{payload.task_id}")
+        # print(payload.model_dump())
+        # print(f"build-{payload.task_id}")
         celery_task = build_model_image.apply_async(
             args=[payload.model_dump()],
             task_id=f"build-{payload.task_id}",

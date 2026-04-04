@@ -49,6 +49,27 @@ const SHARED_STORAGE = path.join(process.cwd(), "..", "shared_storage");
  *         description: Internal server error
  */
 
+const serializeTask = (t) => {
+  const task = t.toObject ? t.toObject() : t;
+  return {
+    ...task,
+    _id: task._id.toString(),
+    userId: task.userId.toString(),
+    pipelineId: task.pipelineId
+      ? { _id: task.pipelineId._id.toString(), name: task.pipelineId.name }
+      : null,
+    modelId: task.modelId
+      ? {
+          _id: task.modelId._id.toString(),
+          name: task.modelId.name,
+          status: task.modelId.status,
+        }
+      : null,
+    createdAt: task.createdAt?.toISOString() ?? null,
+    updatedAt: task.updatedAt?.toISOString() ?? null,
+  };
+};
+
 export async function GET(req) {
   const { session, response } = await requireAuth();
   if (response) return response;
@@ -59,10 +80,17 @@ export async function GET(req) {
       .populate("pipelineId", "name")
       .populate("modelId", "name status")
       .sort({ createdAt: -1 });
-    return NextResponse.json({ tasks }, { status: 200 });
+
+    return NextResponse.json(
+      { tasks: tasks.map(serializeTask) },
+      { status: 200 },
+    );
   } catch (error) {
     console.error("GET /api/tasks error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -73,7 +101,10 @@ export async function POST(req) {
   try {
     const { pipelineId } = await req.json();
     if (!pipelineId) {
-      return NextResponse.json({ error: "pipelineId is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "pipelineId is required" },
+        { status: 400 },
+      );
     }
 
     await connectDB();
@@ -85,11 +116,17 @@ export async function POST(req) {
     }).populate("nodes.modelId");
 
     if (!pipeline) {
-      return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Pipeline not found" },
+        { status: 404 },
+      );
     }
 
     if (pipeline.nodes.length === 0) {
-      return NextResponse.json({ error: "Pipeline has no nodes" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Pipeline has no nodes" },
+        { status: 400 },
+      );
     }
 
     // Create the Task document in Mongo (status = queued)
@@ -104,13 +141,28 @@ export async function POST(req) {
       .sort((a, b) => a.order - b.order)
       .map((node, idx) => {
         const model = node.modelId;
-        const taskDir = path.join(SHARED_STORAGE, "outputs", task._id.toString());
+        const taskOutputDir = path.join(
+          SHARED_STORAGE,
+          "outputs",
+          task._id.toString(),
+        );
+
+        const inputPath =
+          idx === 0
+            ? path.join(SHARED_STORAGE, "uploads", task._id.toString()) // directory, not a file
+            : path.join(
+                SHARED_STORAGE,
+                "outputs",
+                task._id.toString(),
+                `node_${idx - 1}_output.json`,
+              );
+
         return {
           model_id: model._id.toString(),
           docker_image: model.dockerImage,
           model_path: model.localModelPath,
-          input_path: path.join(SHARED_STORAGE, "inputs", task._id.toString(), `node_${idx}_input.json`),
-          output_path: path.join(taskDir, `node_${idx}_output.json`),
+          input_path: inputPath,
+          output_path: path.join(taskOutputDir, `node_${idx}_output.json`),
         };
       });
 
@@ -141,15 +193,26 @@ export async function POST(req) {
     } else {
       // FastAPI unavailable or returned an error — mark task as failed immediately
       // so the user sees an actionable state instead of an eternal "queued" status.
-      console.warn("FastAPI did not accept the trigger — marking task as failed.");
+      console.warn(
+        "FastAPI did not accept the trigger — marking task as failed.",
+      );
       task.status = "failed";
     }
 
     await task.save();
+    const fullTask = await Task.findById(task._id)
+      .populate("pipelineId", "name")
+      .lean();
 
-    return NextResponse.json({ task }, { status: 201 });
+    return NextResponse.json(
+      { task: serializeTask(fullTask) },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/tasks error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

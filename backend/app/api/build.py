@@ -25,6 +25,7 @@ class GitHubPullPayload(BaseModel):
     model_root: str = ""
     image_tag: str = ""
     webhook_url: str = ""
+    use_agent: bool = False
 
 
 @router.post("/build")

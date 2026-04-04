@@ -72,7 +72,7 @@ export default function LoginPage() {
               color: "var(--accent-light)",
             }}
           >
-            ML <span style={{ color: "var(--text-primary)" }}>Pipeline</span>
+            <span>ML </span><span style={{ color: "var(--text-primary)" }}>Pipeline</span>
           </div>
           <div
             style={{

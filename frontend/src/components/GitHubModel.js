@@ -60,6 +60,7 @@ export default function GitHubModel({ onSuccess }) {
   const [branches, setBranches] = useState([]);
   const [fetchingBranches, setFetchingBranches] = useState(false);
   const [showTree, setShowTree] = useState(false);
+  const [useAgent, setUseAgent] = useState(true); // Default to true for better DX
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -110,7 +111,8 @@ export default function GitHubModel({ onSuccess }) {
        ioSchema: { inputs, outputs },
        repoUrl: repoUrl.trim(),
        branch,
-       modelRoot
+       modelRoot,
+       useAgent
     };
 
     try {
@@ -248,6 +250,39 @@ export default function GitHubModel({ onSuccess }) {
                 )}
               </div>
             )}
+
+            {/* AI Packager Toggle */}
+            <div 
+              style={{ 
+                marginTop: "1rem",
+                padding: "1rem", 
+                background: "rgba(108,71,255,0.05)", 
+                borderRadius: "12px", 
+                border: "1px dashed var(--accent)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.5rem"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h4 style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--accent-light)", marginBottom: "0.1rem" }}>
+                    🤖 Enable AI Packager (ArmorIQ)
+                  </h4>
+                  <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0 }}>
+                    Automatically refactor raw code into a production container.
+                  </p>
+                </div>
+                <label className="switch">
+                  <input 
+                    type="checkbox" 
+                    checked={useAgent} 
+                    onChange={(e) => setUseAgent(e.target.checked)} 
+                  />
+                  <span className="slider round"></span>
+                </label>
+              </div>
+            </div>
 
             {error && <div style={{ color: "var(--danger)", fontSize: "0.85rem" }}>⚠ {error}</div>}
 

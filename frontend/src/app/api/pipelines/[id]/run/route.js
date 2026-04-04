@@ -22,21 +22,30 @@ export async function POST(req, { params }) {
     const isZip = formData.get("isZip") === "true";
 
     if (!file) {
-      return NextResponse.json({ error: "Missing input file." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing input file." },
+        { status: 400 },
+      );
     }
 
     await connectDB();
 
     // 1. Fetch Pipeline data
-    const pipeline = await Pipeline.findOne({ _id: pipelineId, ownerId: session.userId });
+    const pipeline = await Pipeline.findOne({
+      _id: pipelineId,
+      ownerId: session.userId,
+    });
     if (!pipeline || pipeline.nodes.length === 0) {
-      return NextResponse.json({ error: "Pipeline not found or empty." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Pipeline not found or empty." },
+        { status: 404 },
+      );
     }
 
     // 2. Fetch all models in the pipeline
-    const modelIds = pipeline.nodes.map(n => n.modelId);
+    const modelIds = pipeline.nodes.map((n) => n.modelId);
     const models = await MLModel.find({ _id: { $in: modelIds } });
-    const modelsMap = new Map(models.map(m => [m._id.toString(), m]));
+    const modelsMap = new Map(models.map((m) => [m._id.toString(), m]));
 
     // 3. Create Task record
     const task = await Task.create({
@@ -51,8 +60,8 @@ export async function POST(req, { params }) {
     // 4. Save uploaded file to shared_storage
     const uploadDir = path.join(SHARED_STORAGE, "uploads", taskId);
     await fs.mkdir(uploadDir, { recursive: true });
-    
-    // We'll save it as 'input_package' regardless of ZIP/file, 
+
+    // We'll save it as 'input_package' regardless of ZIP/file,
     // the worker will handle extraction if it ends in .zip
     const fileName = file.name || (isZip ? "input.zip" : "input.file");
     const inputPath = path.join(uploadDir, fileName);
@@ -61,63 +70,76 @@ export async function POST(req, { params }) {
 
     // 5. Construct TriggerPayload for sequential execution
     const nodes = [];
-    let prevOutputPath = inputPath; // Node 1 starts with the upload
-
-    // Ensure nodes are sorted by order
     const sortedNodes = [...pipeline.nodes].sort((a, b) => a.order - b.order);
 
     for (let i = 0; i < sortedNodes.length; i++) {
-        const nodeDef = sortedNodes[i];
-        const model = modelsMap.get(nodeDef.modelId.toString());
-        
-        // Final output path for this node
-        const nodeOutputDir = path.join(SHARED_STORAGE, "outputs", taskId, `node_${i}`);
-        
-        nodes.push({
-            model_id: model._id.toString(),
-            docker_image: model.builtImage || model.dockerImage,
-            model_path: model.localModelPath || "",
-            input_path: prevOutputPath,
-            output_path: nodeOutputDir,
-        });
+      const nodeDef = sortedNodes[i];
+      const model = modelsMap.get(nodeDef.modelId.toString());
 
-        // The next node takes this node's output as input
-        prevOutputPath = nodeOutputDir;
+      // ✅ node 0 input: the upload DIRECTORY (not the file path)
+      // ✅ node i>0 input: previous node's output FILE
+      const inputPath =
+        i === 0
+          ? uploadDir // directory → regressor does os.listdir()
+          : path.join(
+              SHARED_STORAGE,
+              "outputs",
+              taskId,
+              `node_${i - 1}_output.json`,
+            ); // file → classifier reads JSON
+
+      // ✅ output is always a FILE path, not a directory
+      const outputPath = path.join(
+        SHARED_STORAGE,
+        "outputs",
+        taskId,
+        `node_${i}_output.json`,
+      );
+
+      nodes.push({
+        model_id: model._id.toString(),
+        docker_image: model.builtImage || model.dockerImage,
+        model_path: model.localModelPath || "",
+        input_path: inputPath,
+        output_path: outputPath,
+      });
     }
 
     const payload = {
-        task_id: taskId,
-        pipeline_id: pipelineId,
-        user_id: session.userId,
-        nodes: nodes,
-        webhook_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/webhooks/fastapi`,
+      task_id: taskId,
+      pipeline_id: pipelineId,
+      user_id: session.userId,
+      nodes: nodes,
+      webhook_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/webhooks/fastapi`,
     };
 
     // 6. Call FastAPI trigger endpoint
     const fastapiRes = await fetch(`${FASTAPI_URL}/trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-    }).catch(err => {
-        console.error("FastAPI /trigger error:", err.message);
-        return null;
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch((err) => {
+      console.error("FastAPI /trigger error:", err.message);
+      return null;
     });
 
     if (fastapiRes && fastapiRes.ok) {
-        const data = await fastapiRes.json();
-        task.celeryTaskId = data.celery_task_id;
-        task.status = "running";
-        await task.save();
-        return NextResponse.json({ ok: true, taskId }, { status: 200 });
+      const data = await fastapiRes.json();
+      task.celeryTaskId = data.celery_task_id;
+      task.status = "running";
+      await task.save();
+      return NextResponse.json({ ok: true, taskId }, { status: 200 });
     } else {
-        task.status = "failed";
-        task.errorMessage = "Failed to dispatch task to compute gateway.";
-        await task.save();
-        return NextResponse.json({ error: task.errorMessage }, { status: 500 });
+      task.status = "failed";
+      task.errorMessage = "Failed to dispatch task to compute gateway.";
+      await task.save();
+      return NextResponse.json({ error: task.errorMessage }, { status: 500 });
     }
-
   } catch (error) {
     console.error("POST /api/pipelines/[id]/run error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

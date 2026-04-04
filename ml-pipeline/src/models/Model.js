@@ -1,6 +1,16 @@
+// src/models/Model.js
 import mongoose from "mongoose";
 
 const { Schema } = mongoose;
+
+const IOFieldSchema = new Schema(
+  {
+    name: { type: String, required: true },
+    type: { type: String, required: true }, // e.g. "string", "number", "file"
+    description: { type: String, default: "" },
+  },
+  { _id: false }
+);
 
 const ModelSchema = new Schema(
   {
@@ -25,21 +35,15 @@ const ModelSchema = new Schema(
     },
     localModelPath: {
       type: String,
-      required: true,
+      default: "",
     },
     ioSchema: {
-      inputs: {
-        type: [IOFieldSchema],
-        default: [],
-      },
-      outputs: {
-        type: [IOFieldSchema],
-        default: [],
-      },
+      inputs: { type: [IOFieldSchema], default: [] },
+      outputs: { type: [IOFieldSchema], default: [] },
     },
     dockerImage: {
       type: String,
-      required: true,
+      default: "python:3.10-slim",
     },
   },
   {

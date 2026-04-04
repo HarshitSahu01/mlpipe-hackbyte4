@@ -1,153 +1,184 @@
-// src/app/api/tasks/[id]/result/route.js
-
 import { NextResponse } from "next/server";
+import fs from "fs";
 import path from "path";
-import fs from "fs/promises";
-import { requireAuth } from "@/lib/auth";
-import { connectDB } from "@/lib/mongoose";
-import Task from "@/models/Task";
+import * as XLSX from "xlsx";
 
-const SHARED_STORAGE = path.join(process.cwd(), "..", "shared_storage");
-
-const MIME_MAP = {
-  ".json": "application/json",
-  ".csv": "text/csv",
-  ".txt": "text/plain",
-  ".zip": "application/zip",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-};
-
-/**
- * @swagger
- * /api/tasks/{id}/result:
- *   get:
- *     summary: Download the final output JSON for an inference task
- *     tags: [Tasks]
- *     security:
- *       - cookieAuth: []
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Final output JSON file
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Task, pipeline, or result file not found
- *       500:
- *         description: Internal server error
- */
-export async function GET(req, { params }) {
-  const { session, response } = await requireAuth();
-  if (response) return response;
-
-  try {
-    // ❗ Note: In Next.js 15+ App Router, params must be awaited
-    const { id } = await params;
-    await connectDB();
-
-    const task = await Task.findOne({
-      _id: id,
-      userId: session.userId,
-    }).populate("pipelineId", "nodes");
-
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+// ─── Recursively find all files matching a pattern ───────────────────────────
+function findFiles(dir, predicate, results = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      findFiles(fullPath, predicate, results);
+    } else if (entry.isFile() && predicate(entry.name)) {
+      results.push(fullPath);
     }
+  }
+  return results;
+}
 
-    if (task.taskType !== "inference") {
-      return NextResponse.json(
-        { error: "Only inference tasks have results." },
-        { status: 400 }
-      );
-    }
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-    if (task.status !== "completed") {
-      return NextResponse.json(
-        { error: "Task has not completed successfully yet." },
-        { status: 400 }
-      );
-    }
-
-    // ✅ Build candidate paths to try
-    const nodes = task.pipelineId?.nodes || [];
-    const lastIdx = nodes.length - 1;
-
-    const candidates = [];
-    if (task.resultsPath) candidates.push(task.resultsPath);
-    if (lastIdx >= 0) {
-      const nodePath = path.join(SHARED_STORAGE, "outputs", id, `node_${lastIdx}_output`);
-      candidates.push(`${nodePath}.json`);
-      candidates.push(nodePath); // Check if it's a directory
-    }
-    candidates.push(path.join(SHARED_STORAGE, "outputs", id)); // Final fallback
-
-    /**
-     * ✅ Robust Helper to resolve a candidate path
-     * It handles:
-     * 1. Direct file matches (e.g., node_0_output.json)
-     * 2. Directory results (e.g., node_0_output.json/some_file_final.json)
-     */
-    const resolveCandidate = async (candidatePath) => {
-      try {
-        const stats = await fs.stat(candidatePath);
-        if (stats.isFile()) return candidatePath;
-        if (stats.isDirectory()) {
-          const entries = await fs.readdir(candidatePath);
-          const files = entries.filter((e) => !e.endsWith(".txt") && !e.includes("node_")); // ignore logs/subdirs
-          if (files.length > 0) {
-            // Prefer _final.json, then any json, then anything
-            const finalJson = files.find((f) => f.endsWith("_final.json"));
-            const anyJson = files.find((f) => f.endsWith(".json"));
-            return path.join(candidatePath, finalJson ?? anyJson ?? files[0]);
-          }
-        }
-      } catch (e) {
-        // Skip missing or invalid paths
+function flattenObject(obj, prefix = "") {
+  const rows = [];
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      rows.push(...flattenObject(v, key));
+    } else if (Array.isArray(v)) {
+      if (v.length === 0) {
+        rows.push({ Key: key, Value: "[]" });
+      } else if (typeof v[0] !== "object") {
+        rows.push({ Key: key, Value: v.join(", ") });
       }
-      return null;
+      // arrays-of-objects are handled as separate sheets
+    } else {
+      rows.push({ Key: key, Value: v ?? "" });
+    }
+  }
+  return rows;
+}
+
+function styleSheet(ws, headerColor = "4F81BD") {
+  if (!ws["!ref"]) return;
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+    if (!ws[addr]) continue;
+    ws[addr].s = {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: headerColor } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: { bottom: { style: "thin", color: { rgb: "CCCCCC" } } },
     };
+  }
 
-    let resolvedPath = null;
-    for (const candidate of candidates) {
-      resolvedPath = await resolveCandidate(candidate);
-      if (resolvedPath) break;
+  const colWidths = [];
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    let max = 10;
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (cell?.v != null) max = Math.max(max, String(cell.v).length + 2);
+    }
+    colWidths.push({ wch: Math.min(max, 60) });
+  }
+  ws["!cols"] = colWidths;
+  ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
+}
+
+function buildWorkbook(result) {
+  const wb = XLSX.utils.book_new();
+
+  if (Array.isArray(result)) {
+    const rows = result.length > 0 && typeof result[0] === "object"
+      ? result
+      : result.map((v) => ({ Value: v }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    styleSheet(ws, "4F81BD");
+    XLSX.utils.book_append_sheet(wb, ws, "Results");
+    return wb;
+  }
+
+  if (typeof result === "object" && result !== null) {
+    const summaryRows = [];
+    const arraySections = {};
+
+    for (const [k, v] of Object.entries(result)) {
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === "object") {
+        arraySections[k] = v;
+      } else if (Array.isArray(v)) {
+        summaryRows.push({ Key: k, Value: v.join(", ") });
+      } else if (typeof v === "object" && v !== null) {
+        summaryRows.push(...flattenObject(v, k));
+      } else {
+        summaryRows.push({ Key: k, Value: v ?? "" });
+      }
     }
 
-    if (!resolvedPath) {
-      return NextResponse.json(
-        { error: "Result file not found for this task." },
-        { status: 404 }
+    if (summaryRows.length > 0) {
+      const ws = XLSX.utils.json_to_sheet(summaryRows);
+      styleSheet(ws, "4F81BD");
+      XLSX.utils.book_append_sheet(wb, ws, "Summary");
+    }
+
+    for (const [key, rows] of Object.entries(arraySections)) {
+      const ws = XLSX.utils.json_to_sheet(rows);
+      styleSheet(ws, "70AD47");
+      XLSX.utils.book_append_sheet(wb, ws, key.slice(0, 31));
+    }
+
+    if (wb.SheetNames.length > 0) return wb;
+  }
+
+  // Fallback
+  const ws = XLSX.utils.aoa_to_sheet([["Raw Output"], [JSON.stringify(result, null, 2)]]);
+  XLSX.utils.book_append_sheet(wb, ws, "Raw JSON");
+  return wb;
+}
+
+// ─── Route Handler ────────────────────────────────────────────────────────────
+
+export async function GET(req, { params }) {
+  try {
+    const { id } = await params;
+
+    const basePath = path.join(process.cwd(), "..", "shared_storage", "outputs", id);
+
+    if (!fs.existsSync(basePath)) {
+      return NextResponse.json({ error: "Task output not found" }, { status: 404 });
+    }
+
+    // ✅ Recursively find all real files ending in _output.json
+    const outputFiles = findFiles(basePath, (name) => name.endsWith("_output.json"));
+
+    if (outputFiles.length === 0) {
+      // Debug: log what IS in the directory tree so you can inspect
+      console.error(
+        "[result] No _output.json file found. Directory contents:",
+        JSON.stringify(findFiles(basePath, () => true), null, 2)
       );
+      return NextResponse.json({ error: "Output file missing" }, { status: 404 });
     }
 
-    const fileBuffer = await fs.readFile(resolvedPath);
-
-    const ext = path.extname(resolvedPath).toLowerCase();
-    const mimeType = MIME_MAP[ext] || "application/octet-stream";
-
-    // ✅ Professional filename format
-    const fileName = `task_${id.slice(-8)}_result${ext || ".json"}`;
-
-    return new Response(fileBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": mimeType,
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-      },
+    // ✅ Sort to ensure we pick the output from the last node (e.g., node_1 over node_0)
+    outputFiles.sort((a, b) => {
+      const getIndex = (fp) => {
+        // match something like node_5_output in the path
+        const match = fp.match(/node_(\d+)_output/);
+        return match ? parseInt(match[1], 10) : -1;
+      };
+      return getIndex(b) - getIndex(a); // descending: highest index first
     });
 
-  } catch (error) {
-    console.error("GET /api/tasks/[id]/result error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    // Use the match from the highest node; log if there are multiple
+    if (outputFiles.length > 1) {
+      console.warn("[result] Multiple output files found, using the one from the last node:", outputFiles[0]);
+    }
+
+    const filePath = outputFiles[0];
+    console.log("[result] Reading:", filePath);
+
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    const result = parsed?.json?.[2] ?? parsed;
+
+    const wb = buildWorkbook(result);
+
+    const xlsxBuffer = XLSX.write(wb, {
+      type: "buffer",
+      bookType: "xlsx",
+      cellStyles: true,
+    });
+
+    return new NextResponse(xlsxBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="task_${id}_result.xlsx"`,
+      },
+    });
+  } catch (err) {
+    console.error("[result] Error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

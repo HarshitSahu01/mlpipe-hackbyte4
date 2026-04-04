@@ -1,65 +1,142 @@
-import Image from "next/image";
+// src/app/page.js
+// Landing page — redirects to /dashboard if logged in, else shows sign-in CTA
+import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import jwt from "jsonwebtoken";
 
-export default function Home() {
+export default async function LandingPage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("token")?.value;
+  if (token) {
+    try {
+      jwt.verify(token, process.env.JWT_SECRET);
+      redirect("/dashboard");
+    } catch {
+      // expired/invalid — show landing
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "var(--bg-primary)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem",
+        textAlign: "center",
+      }}
+    >
+      {/* Glow orb */}
+      <div
+        style={{
+          position: "absolute",
+          top: "20%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "600px",
+          height: "600px",
+          background: "radial-gradient(circle, rgba(108,71,255,0.12) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div style={{ position: "relative", maxWidth: "680px" }}>
+        {/* Badge */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            background: "rgba(108,71,255,0.12)",
+            border: "1px solid rgba(108,71,255,0.3)",
+            borderRadius: "999px",
+            padding: "0.3rem 0.9rem",
+            fontSize: "0.78rem",
+            color: "var(--accent-light)",
+            fontWeight: 600,
+            marginBottom: "1.5rem",
+            letterSpacing: "0.05em",
+          }}
+        >
+          <span>⚡</span> AGNOSTIC ML INFERENCE SAAS
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <h1
+          style={{
+            fontSize: "clamp(2.5rem, 6vw, 4rem)",
+            fontWeight: 800,
+            lineHeight: 1.1,
+            letterSpacing: "-0.03em",
+            marginBottom: "1.25rem",
+            background: "linear-gradient(135deg, #f1f0ff 0%, #8b6dff 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          Run Any ML Model.
+          <br />No Infrastructure.
+        </h1>
+
+        <p
+          style={{
+            fontSize: "1.1rem",
+            color: "var(--text-secondary)",
+            lineHeight: 1.7,
+            marginBottom: "2.5rem",
+            maxWidth: "520px",
+            margin: "0 auto 2.5rem",
+          }}
+        >
+          Predict-Xplore lets you register any Docker-based ML model, chain them into
+          pipelines, and trigger inference — all from one clean UI backed by Celery workers.
+        </p>
+
+        <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
+          <Link href="/auth/signup" className="btn btn-primary" style={{ padding: "0.75rem 2rem", fontSize: "1rem" }}>
+            Get Started Free
+          </Link>
+          <Link href="/auth/login" className="btn btn-secondary" style={{ padding: "0.75rem 2rem", fontSize: "1rem" }}>
+            Sign In
+          </Link>
         </div>
-      </main>
-    </div>
+
+        {/* Feature pills */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem",
+            justifyContent: "center",
+            marginTop: "4rem",
+          }}
+        >
+          {[
+            "Docker-native execution",
+            "Celery + Redis task queue",
+            "Pipeline chaining",
+            "Real-time logs",
+            "Shared local storage",
+          ].map((f) => (
+            <span
+              key={f}
+              style={{
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                padding: "0.4rem 0.9rem",
+                fontSize: "0.8rem",
+                color: "var(--text-secondary)",
+              }}
+            >
+              {f}
+            </span>
+          ))}
+        </div>
+      </div>
+    </main>
   );
 }

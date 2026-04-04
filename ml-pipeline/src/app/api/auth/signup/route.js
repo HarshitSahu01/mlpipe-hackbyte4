@@ -1,4 +1,4 @@
-// app/api/auth/signup/route.js
+// src/app/api/auth/signup/route.js
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -6,6 +6,11 @@ import { connectDB } from "@/lib/mongoose";
 import User from "@/models/User";
 
 const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('Missing environment variable: "JWT_SECRET"');
+}
+
 /**
  * @swagger
  * /api/auth/signup:
@@ -47,14 +52,14 @@ export async function POST(req) {
     if (!name || !email || !password) {
       return NextResponse.json(
         { error: "Name, email and password are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (name.trim().length < 2) {
       return NextResponse.json(
         { error: "Name must be at least 2 characters" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -62,39 +67,37 @@ export async function POST(req) {
     if (!emailRegex.test(email)) {
       return NextResponse.json(
         { error: "Invalid email format" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     // ── 2. Check if email already exists ────────────
     await connectDB();
-
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
       return NextResponse.json(
         { error: "An account with this email already exists" },
-        { status: 409 }, // 409 Conflict
+        { status: 409 }
       );
     }
 
     // ── 3. Hash password ─────────────────────────────
-    // saltRounds: 12 is strong but not too slow
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
-    // ── 4. Create user ───────────────────────────────
+    // ── 4. Create user (role defaults to "user") ─────
     const user = await User.create({
       name: name.trim(),
       email: email.toLowerCase(),
-      password: hashedPassword,
-      provider: "credentials",
-      role: "member",
+      passwordHash,
+      role: "user",
+      credits: 100, // starter credits
     });
 
     // ── 5. Sign JWT ──────────────────────────────────
@@ -105,10 +108,10 @@ export async function POST(req) {
         role: user.role,
       },
       JWT_SECRET,
-      { expiresIn: "7d" },
+      { expiresIn: "7d" }
     );
 
-    // ── 6. Set httpOnly cookie + return safe user data ──
+    // ── 6. Set httpOnly cookie + return safe user data ─
     const response = NextResponse.json(
       {
         message: "Account created successfully",
@@ -117,10 +120,10 @@ export async function POST(req) {
           name: user.name,
           email: user.email,
           role: user.role,
-          group: user.group,
+          credits: user.credits,
         },
       },
-      { status: 201 },
+      { status: 201 }
     );
 
     response.cookies.set("token", token, {
@@ -136,7 +139,7 @@ export async function POST(req) {
     console.error("Signup error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

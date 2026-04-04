@@ -1,4 +1,4 @@
-// app/api/auth/login/route.js
+// src/app/api/auth/login/route.js
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -46,11 +46,11 @@ export async function POST(req) {
   try {
     const { email, password } = await req.json();
 
-    // ── 1. Input validation ──────────────────────────
+    // ── 1. Input validation ───────────────────────────
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -58,32 +58,28 @@ export async function POST(req) {
     if (!emailRegex.test(email)) {
       return NextResponse.json(
         { error: "Invalid email format" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    // ── 2. Find user (explicitly select password) ────
+    // ── 2. Find user ─────────────────────────────────
     await connectDB();
-
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
+    const user = await User.findOne({ email: email.toLowerCase() });
 
     if (!user) {
-      // Same message as wrong password — don't leak which one is wrong
       return NextResponse.json(
         { error: "Invalid credentials" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
-    // ── 3. Verify password ───────────────────────────
-    const isValid = await bcrypt.compare(password, user.password);
+    // ── 3. Verify password (stored as passwordHash) ──
+    const isValid = await bcrypt.compare(password, user.passwordHash);
 
     if (!isValid) {
       return NextResponse.json(
         { error: "Invalid credentials" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
@@ -95,10 +91,10 @@ export async function POST(req) {
         role: user.role,
       },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN },
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
-    // ── 5. Set httpOnly cookie + return safe user data ──
+    // ── 5. Set httpOnly cookie + return safe user data ─
     const response = NextResponse.json(
       {
         message: "Login successful",
@@ -107,10 +103,10 @@ export async function POST(req) {
           name: user.name,
           email: user.email,
           role: user.role,
-          group: user.group,
+          credits: user.credits,
         },
       },
-      { status: 200 },
+      { status: 200 }
     );
 
     response.cookies.set("token", token, {
@@ -126,7 +122,7 @@ export async function POST(req) {
     console.error("Login error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

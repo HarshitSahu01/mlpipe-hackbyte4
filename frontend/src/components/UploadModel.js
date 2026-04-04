@@ -103,6 +103,7 @@ export default function UploadModel({ onSuccess }) {
   const [outputs, setOutputs] = useState([{ name: "prediction", type: "json" }]);
   const [file, setFile] = useState(null);
   const [zipError, setZipError] = useState("");
+  const [useAiPackager, setUseAiPackager] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -121,10 +122,24 @@ export default function UploadModel({ onSuccess }) {
     if (!selected) { setFile(null); return; }
 
     // Extension check
-    if (!selected.name.toLowerCase().endsWith(".zip")) {
-      setZipError("File must be a .zip archive.");
+    const isPyFile = selected.name.toLowerCase().endsWith(".py");
+    const isZipFile = selected.name.toLowerCase().endsWith(".zip");
+
+    if (!isZipFile && !isPyFile) {
+      setZipError("File must be a .zip archive or a .py script.");
       setFile(null);
       return;
+    }
+
+    if (isPyFile) {
+      setUseAiPackager(true);
+      setFile(selected);
+      return;
+    }
+
+    if (useAiPackager && isZipFile) {
+        setFile(selected);
+        return;
     }
 
     // Read and validate magic bytes + required entries
@@ -177,6 +192,7 @@ export default function UploadModel({ onSuccess }) {
     formData.append("description", description);
     formData.append("dockerImage", dockerImage);
     formData.append("ioSchema", JSON.stringify({ inputs, outputs }));
+    formData.append("useAiPackager", useAiPackager);
     formData.append("file", file);
 
     try {
@@ -376,7 +392,7 @@ export default function UploadModel({ onSuccess }) {
               <input
                 type="file"
                 id="model-file"
-                accept=".zip,application/zip,application/x-zip-compressed"
+                accept=".zip,application/zip,application/x-zip-compressed,.py"
                 style={{ display: "none" }}
                 onChange={(e) => validateAndSetFile(e.target.files[0])}
               />
@@ -388,7 +404,7 @@ export default function UploadModel({ onSuccess }) {
                       {file.name}
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                      {(file.size / 1024).toFixed(1)} KB — valid ZIP with all required files
+                      {(file.size / 1024).toFixed(1)} KB — {useAiPackager ? "AI Packager Mode" : "valid ZIP with all required files"}
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                       click to change
@@ -401,10 +417,25 @@ export default function UploadModel({ onSuccess }) {
                       Drag &amp; drop or click to select
                     </div>
                     <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                      .zip only — must contain run.py or inference.py, requirements.txt, DOCKERFILE
+                      .zip or .py — AI Agent can restructure raw code
                     </div>
                   </div>
                 )}
+              </label>
+            </div>
+            
+            <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input 
+                type="checkbox" 
+                id="use-ai" 
+                checked={useAiPackager}
+                onChange={(e) => {
+                  setUseAiPackager(e.target.checked);
+                  if (file) validateAndSetFile(file); // re-validate with new setting
+                }}
+              />
+              <label htmlFor="use-ai" style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                Use AI Packager (Auto-restructure code to Predict-Xplore format)
               </label>
             </div>
 

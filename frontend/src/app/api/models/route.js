@@ -119,6 +119,7 @@ export async function POST(req) {
     const description = formData.get("description") || "";
     const dockerImage = formData.get("dockerImage") || "python:3.10-slim";
     const ioSchemaRaw = formData.get("ioSchema") || '{"inputs":[],"outputs":[]}';
+    const useAiPackager = formData.get("useAiPackager") === "true";
     const file        = formData.get("file");
 
     // ── Basic field validation ────────────────────────────────────────────────
@@ -149,49 +150,61 @@ export async function POST(req) {
     }
 
     const fileName = file.name ?? "";
-    if (!fileName.toLowerCase().endsWith(".zip")) {
+    const isPyFile = fileName.toLowerCase().endsWith(".py");
+    const isZipFile = fileName.toLowerCase().endsWith(".zip");
+
+    if (!isZipFile && !isPyFile) {
       return NextResponse.json(
-        { error: "Uploaded file must be a .zip archive." },
+        { error: "Uploaded file must be a .zip archive or a .py script." },
         { status: 400 }
       );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Check ZIP magic bytes: PK\x03\x04
-    if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b ||
-        buffer[2] !== 0x03 || buffer[3] !== 0x04) {
-      return NextResponse.json(
-        { error: "File does not appear to be a valid ZIP archive." },
-        { status: 400 }
-      );
-    }
+    if (!useAiPackager) {
+      if (!isZipFile) {
+        return NextResponse.json(
+          { error: "Uploaded file must be a .zip archive unless using AI Packager." },
+          { status: 400 }
+        );
+      }
 
-    // Enumerate ZIP entries and check for required files
-    const entries = listZipEntries(buffer);
-    
-    // Check for each core requirement
-    const hasRunFile = entries.some(e => {
-      const base = e.split("/").pop().toLowerCase();
-      return base === "run.py" || base === "inference.py";
-    });
-    const hasRequirements = entries.some(e => e.split("/").pop().toLowerCase() === "requirements.txt");
-    const hasDockerfile = entries.some(e => e.split("/").pop().toLowerCase() === "dockerfile");
+      // Check ZIP magic bytes: PK\x03\x04
+      if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b ||
+          buffer[2] !== 0x03 || buffer[3] !== 0x04) {
+        return NextResponse.json(
+          { error: "File does not appear to be a valid ZIP archive." },
+          { status: 400 }
+        );
+      }
 
-    const missing = [];
-    if (!hasRunFile) missing.push("run.py (or inference.py)");
-    if (!hasRequirements) missing.push("requirements.txt");
-    if (!hasDockerfile) missing.push("DOCKERFILE");
+      // Enumerate ZIP entries and check for required files
+      const entries = listZipEntries(buffer);
+      
+      // Check for each core requirement
+      const hasRunFile = entries.some(e => {
+        const base = e.split("/").pop().toLowerCase();
+        return base === "run.py" || base === "inference.py";
+      });
+      const hasRequirements = entries.some(e => e.split("/").pop().toLowerCase() === "requirements.txt");
+      const hasDockerfile = entries.some(e => e.split("/").pop().toLowerCase() === "dockerfile");
 
-    if (missing.length > 0) {
-      return NextResponse.json(
-        {
-          error: `ZIP package is missing required file(s): ${missing.join(", ")}. ` +
-                 `The ZIP must contain run.py or inference.py (entry point), ` +
-                 `requirements.txt, and a DOCKERFILE.`,
-        },
-        { status: 400 }
-      );
+      const missing = [];
+      if (!hasRunFile) missing.push("run.py (or inference.py)");
+      if (!hasRequirements) missing.push("requirements.txt");
+      if (!hasDockerfile) missing.push("DOCKERFILE");
+
+      if (missing.length > 0) {
+        return NextResponse.json(
+          {
+            error: `ZIP package is missing required file(s): ${missing.join(", ")}. ` +
+                   `The ZIP must contain run.py or inference.py (entry point), ` +
+                   `requirements.txt, and a DOCKERFILE.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // ── Persist model record ──────────────────────────────────────────────────
@@ -228,15 +241,22 @@ export async function POST(req) {
     const imageTag = `predict-xplore/${model._id.toString()}:latest`;
     const webhookUrl = `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/webhooks/fastapi`;
 
+    let endpoint = "/build";
     const buildPayload = {
       task_id: buildTask._id.toString(),
       model_id: model._id.toString(),
-      zip_path: filePath,
       image_tag: imageTag,
       webhook_url: webhookUrl,
     };
 
-    const fastapiRes = await fetch(`${FASTAPI_URL}/build`, {
+    if (useAiPackager) {
+      endpoint = "/agent-package";
+      buildPayload.input_path = filePath;
+    } else {
+      buildPayload.zip_path = filePath;
+    }
+
+    const fastapiRes = await fetch(`${FASTAPI_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildPayload),

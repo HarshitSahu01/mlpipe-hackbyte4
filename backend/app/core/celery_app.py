@@ -11,7 +11,7 @@ celery_app = Celery(
     "predict_xplore",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.workers.tasks", "app.workers.build_tasks", "app.workers.github_tasks"],
+    include=["app.workers.tasks", "app.workers.build_tasks", "app.workers.github_tasks", "app.workers.agent_tasks"],
 )
 
 celery_app.conf.update(

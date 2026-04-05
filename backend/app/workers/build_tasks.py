@@ -157,6 +157,19 @@ def build_model_image(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any
         if not dockerfile_path.exists():
             raise FileNotFoundError(f"Dockerfile not found in {build_context}")
 
+        # --- Compatibility: Stub .git/config if missing ---
+        # Some Dockerfiles (e.g. ultralytics) run `sed` on .git/config assuming
+        # a real git checkout. ZIP-extracted contexts have no .git/ directory,
+        # causing `sed` to exit with code 2 and failing the build.
+        # A minimal valid config file satisfies the command harmlessly.
+        git_config_path = pathlib.Path(build_context) / ".git" / "config"
+        if not git_config_path.exists():
+            git_config_path.parent.mkdir(parents=True, exist_ok=True)
+            git_config_path.write_text(
+                "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n",
+                encoding="utf-8",
+            )
+            logger.info("[compat] Created stub .git/config (ZIP build context — no git checkout)")
 
         logger.info(f"Build context: {build_context}")
         logger.info(f"Dockerfile: {dockerfile_path.name}")

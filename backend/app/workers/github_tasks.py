@@ -37,14 +37,16 @@ def pull_from_github(self: Task, payload_dict: Dict[str, Any]) -> Dict[str, Any]
       - image_tag:    str (optional)
       - webhook_url:  str (optional)
     """
-    task_id    = payload_dict["task_id"]
-    model_id   = payload_dict["model_id"]
-    repo_url   = payload_dict["repo_url"].rstrip("/")
-    branch     = payload_dict.get("branch", "main")
-    model_root = payload_dict.get("model_root", "").strip("/")
-    image_tag  = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
-    webhook_url = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
-    use_agent  = payload_dict.get("use_agent", False)
+    task_id           = payload_dict["task_id"]
+    model_id          = payload_dict["model_id"]
+    repo_url          = payload_dict["repo_url"].rstrip("/")
+    branch            = payload_dict.get("branch", "main")
+    model_root        = payload_dict.get("model_root", "").strip("/")
+    # Folder inside model_root that contains the Dockerfile (case-insensitive match)
+    dockerfile_folder = payload_dict.get("dockerfile_folder", "docker")
+    image_tag         = payload_dict.get("image_tag", f"ml-pipeline/{model_id}:latest")
+    webhook_url       = payload_dict.get("webhook_url", NEXTJS_WEBHOOK_URL)
+    use_agent         = payload_dict.get("use_agent", False)
 
     # --- Unified log file (created fresh here, appended by build task) ---
     task_output_dir = SHARED_STORAGE_PATH / "build_logs" / task_id

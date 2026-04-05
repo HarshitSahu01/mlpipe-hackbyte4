@@ -23,6 +23,7 @@ class GitHubPullPayload(BaseModel):
     repo_url: str
     branch: str = "main"
     model_root: str = ""
+    dockerfile_folder: str = "docker"
     image_tag: str = ""
     webhook_url: str = ""
     use_agent: bool = False

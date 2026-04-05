@@ -52,6 +52,7 @@ export async function POST(req) {
       repo_url: repoUrl,
       branch: branch || "main",
       model_root: modelRoot || "",
+      dockerfile_folder: "docker" || "Docker",
       image_tag: imageTag,
       webhook_url: webhookUrl,
       use_agent: useAgent || false,

@@ -8,3 +8,5 @@ package-lock.json
 .env.local
 ml-pipeline
 shared_storage/*
+backend/.venv/*
+backend/.env
